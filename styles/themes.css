@@ -1,0 +1,133 @@
+/**
+ * Brand Theme Color Definitions
+ * 
+ * This file defines CSS variables for brand themes.
+ * Each theme has light and dark mode variants.
+ * 
+ * Architecture:
+ * - Mode (light/dark): Controlled by next-themes via .dark class
+ * - Theme (brand): Controlled by .theme-{name} class on <html>
+ * 
+ * Usage: <html class="light theme-notion"> or <html class="dark theme-notion">
+ */
+
+/* ============================================
+   THEME: NOTION
+   ============================================ */
+
+/* Light Mode - Theme Notion */
+.theme-notion {
+  /* Base Colors */
+  --background: #F7F9FC;
+  --surface: #FFFFFF;
+  --card: #FFFFFF;
+  
+  /* Primary (Blue) - Navigation & Primary Actions */
+  --primary: #1F4E79;
+  --primary-foreground: #FFFFFF;
+  
+  /* Accent (Orange) - Actions Only */
+  --accent: #F28C28;
+  --accent-foreground: #FFFFFF;
+  
+  /* Text Colors */
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --foreground: #0F172A;
+  
+  /* UI Elements */
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #1F4E79;
+  
+  /* Secondary & Muted */
+  --secondary: #F1F5F9;
+  --secondary-foreground: #0F172A;
+  --muted: #F1F5F9;
+  --muted-foreground: #475569;
+  
+  /* Popover & Card */
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --card-foreground: #0F172A;
+  
+  /* Destructive */
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  
+  /* Radius */
+  --radius: 0.75rem;
+}
+
+/* Dark Mode - Theme Notion */
+.dark.theme-notion {
+  /* Base Colors */
+  --background: #0B1220;
+  --surface: #111827;
+  --card: #111827;
+  
+  /* Primary (Blue) - Navigation & Primary Actions */
+  --primary: #3B82F6;
+  --primary-foreground: #FFFFFF;
+  
+  /* Accent (Orange) - Actions Only */
+  --accent: #FB923C;
+  --accent-foreground: #FFFFFF;
+  
+  /* Text Colors */
+  --text-primary: #E5E7EB;
+  --text-secondary: #9CA3AF;
+  --foreground: #E5E7EB;
+  
+  /* UI Elements */
+  --border: #1F2933;
+  --input: #1F2933;
+  --ring: #3B82F6;
+  
+  /* Secondary & Muted */
+  --secondary: #1F2937;
+  --secondary-foreground: #E5E7EB;
+  --muted: #1F2937;
+  --muted-foreground: #9CA3AF;
+  
+  /* Popover & Card */
+  --popover: #111827;
+  --popover-foreground: #E5E7EB;
+  --card-foreground: #E5E7EB;
+  
+  /* Destructive */
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  
+  /* Radius (same in dark mode) */
+  --radius: 0.75rem;
+}
+
+/* ============================================
+   FUTURE THEME EXAMPLE: CORPORATE
+   ============================================
+   
+   To add a new theme in the future:
+   1. Copy the .theme-notion block above
+   2. Rename to .theme-corporate (or your theme name)
+   3. Update all color values
+   4. Add dark mode variant: .dark.theme-corporate
+   5. Use setBrandTheme('corporate') to switch
+   
+   Example structure:
+   
+   .theme-corporate {
+     --background: #FFFFFF;
+     --primary: #000000;
+     --accent: #FF0000;
+     ... (all other variables)
+   }
+   
+   .dark.theme-corporate {
+     --background: #000000;
+     --primary: #FFFFFF;
+     --accent: #FF6B6B;
+     ... (all other variables)
+   }
+   */
+
