@@ -104,30 +104,176 @@
 }
 
 /* ============================================
-   FUTURE THEME EXAMPLE: CORPORATE
-   ============================================
-   
-   To add a new theme in the future:
-   1. Copy the .theme-notion block above
-   2. Rename to .theme-corporate (or your theme name)
-   3. Update all color values
-   4. Add dark mode variant: .dark.theme-corporate
-   5. Use setBrandTheme('corporate') to switch
-   
-   Example structure:
-   
-   .theme-corporate {
-     --background: #FFFFFF;
-     --primary: #000000;
-     --accent: #FF0000;
-     ... (all other variables)
-   }
-   
-   .dark.theme-corporate {
-     --background: #000000;
-     --primary: #FFFFFF;
-     --accent: #FF6B6B;
-     ... (all other variables)
-   }
-   */
+   THEME: OCEAN (Teal & Cyan)
+   ============================================ */
+
+/* Light Mode - Theme Ocean */
+.theme-ocean {
+  --background: #F0FDFA;
+  --surface: #FFFFFF;
+  --card: #FFFFFF;
+  --primary: #0891B2;
+  --primary-foreground: #FFFFFF;
+  --accent: #06B6D4;
+  --accent-foreground: #FFFFFF;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --foreground: #0F172A;
+  --border: #CCFBF1;
+  --input: #CCFBF1;
+  --ring: #0891B2;
+  --secondary: #ECFEFF;
+  --secondary-foreground: #0F172A;
+  --muted: #ECFEFF;
+  --muted-foreground: #475569;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --card-foreground: #0F172A;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --radius: 0.75rem;
+}
+
+/* Dark Mode - Theme Ocean */
+.dark.theme-ocean {
+  --background: #0A1628;
+  --surface: #0F2744;
+  --card: #0F2744;
+  --primary: #06B6D4;
+  --primary-foreground: #F0FDFA;
+  --accent: #22D3EE;
+  --accent-foreground: #0F172A;
+  --text-primary: #E0F2FE;
+  --text-secondary: #A5B4FC;
+  --foreground: #E0F2FE;
+  --border: #164E63;
+  --input: #164E63;
+  --ring: #06B6D4;
+  --secondary: #155E75;
+  --secondary-foreground: #E0F2FE;
+  --muted: #155E75;
+  --muted-foreground: #A5B4FC;
+  --popover: #0F2744;
+  --popover-foreground: #E0F2FE;
+  --card-foreground: #E0F2FE;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --radius: 0.75rem;
+}
+
+/* ============================================
+   THEME: FOREST (Green)
+   ============================================ */
+
+/* Light Mode - Theme Forest */
+.theme-forest {
+  --background: #F0FDF4;
+  --surface: #FFFFFF;
+  --card: #FFFFFF;
+  --primary: #059669;
+  --primary-foreground: #FFFFFF;
+  --accent: #10B981;
+  --accent-foreground: #FFFFFF;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --foreground: #0F172A;
+  --border: #D1FAE5;
+  --input: #D1FAE5;
+  --ring: #059669;
+  --secondary: #ECFDF5;
+  --secondary-foreground: #0F172A;
+  --muted: #ECFDF5;
+  --muted-foreground: #475569;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --card-foreground: #0F172A;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --radius: 0.75rem;
+}
+
+/* Dark Mode - Theme Forest */
+.dark.theme-forest {
+  --background: #0A1F14;
+  --surface: #0F2922;
+  --card: #0F2922;
+  --primary: #10B981;
+  --primary-foreground: #F0FDF4;
+  --accent: #34D399;
+  --accent-foreground: #0F172A;
+  --text-primary: #DCFCE7;
+  --text-secondary: #BBF7D0;
+  --foreground: #DCFCE7;
+  --border: #065F46;
+  --input: #065F46;
+  --ring: #10B981;
+  --secondary: #047857;
+  --secondary-foreground: #DCFCE7;
+  --muted: #047857;
+  --muted-foreground: #BBF7D0;
+  --popover: #0F2922;
+  --popover-foreground: #DCFCE7;
+  --card-foreground: #DCFCE7;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --radius: 0.75rem;
+}
+
+/* ============================================
+   THEME: PURPLE (Royal Purple)
+   ============================================ */
+
+/* Light Mode - Theme Purple */
+.theme-purple {
+  --background: #FAF5FF;
+  --surface: #FFFFFF;
+  --card: #FFFFFF;
+  --primary: #7C3AED;
+  --primary-foreground: #FFFFFF;
+  --accent: #A78BFA;
+  --accent-foreground: #FFFFFF;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --foreground: #0F172A;
+  --border: #E9D5FF;
+  --input: #E9D5FF;
+  --ring: #7C3AED;
+  --secondary: #F3E8FF;
+  --secondary-foreground: #0F172A;
+  --muted: #F3E8FF;
+  --muted-foreground: #475569;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --card-foreground: #0F172A;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --radius: 0.75rem;
+}
+
+/* Dark Mode - Theme Purple */
+.dark.theme-purple {
+  --background: #1A0B2E;
+  --surface: #2D1B4E;
+  --card: #2D1B4E;
+  --primary: #A78BFA;
+  --primary-foreground: #FAF5FF;
+  --accent: #C4B5FD;
+  --accent-foreground: #1A0B2E;
+  --text-primary: #EDE9FE;
+  --text-secondary: #C4B5FD;
+  --foreground: #EDE9FE;
+  --border: #4C1D95;
+  --input: #4C1D95;
+  --ring: #A78BFA;
+  --secondary: #5B21B6;
+  --secondary-foreground: #EDE9FE;
+  --muted: #5B21B6;
+  --muted-foreground: #C4B5FD;
+  --popover: #2D1B4E;
+  --popover-foreground: #EDE9FE;
+  --card-foreground: #EDE9FE;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --radius: 0.75rem;
+}
 

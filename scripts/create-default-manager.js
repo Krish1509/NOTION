@@ -1,11 +1,8 @@
 /**
  * Create Default Manager Script
  * 
- * Creates a manager user with:
- * - Username: manager
- * - Password: manager
- * 
- * Run with: node scripts/create-default-manager.js
+ * Creates a manager user for initial setup.
+ * Run: npm run create-manager
  */
 
 const https = require('https');
@@ -31,7 +28,6 @@ function loadEnv() {
     
     return env;
   } catch (error) {
-    console.error('Error loading .env.local:', error.message);
     return {};
   }
 }
@@ -115,19 +111,19 @@ async function createManager() {
           resolve(user);
         } else {
           const error = JSON.parse(data);
-          console.error('❌ Error creating user:', error);
+          console.error('❌ Error creating user');
           if (error.errors && error.errors.length > 0) {
             error.errors.forEach(err => {
               console.error(`   - ${err.message}`);
             });
           }
-          reject(new Error(`HTTP ${res.statusCode}: ${error.message || 'Unknown error'}`));
+          reject(new Error('Failed to create user'));
         }
       });
     });
 
     req.on('error', (error) => {
-      console.error('❌ Request error:', error.message);
+      console.error('❌ Request error');
       reject(error);
     });
 
@@ -136,14 +132,13 @@ async function createManager() {
   });
 }
 
-// Run the script
 createManager()
   .then(() => {
     console.log('✨ Done!');
     process.exit(0);
   })
-  .catch((error) => {
-    console.error('\n❌ Failed to create manager:', error.message);
+  .catch(() => {
+    console.error('\n❌ Failed to create manager');
     process.exit(1);
   });
 

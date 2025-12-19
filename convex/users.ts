@@ -13,6 +13,26 @@ import { mutation, query } from "./_generated/server";
 // ============================================================================
 
 /**
+ * Get current authenticated user
+ */
+export const getCurrentUser = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return null;
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", identity.subject))
+      .unique();
+
+    return user;
+  },
+});
+
+/**
  * Get user by Clerk user ID
  */
 export const getUserByClerkId = query({
@@ -115,6 +135,7 @@ export const createUser = mutation({
     phoneNumber: v.string(),
     address: v.string(),
     role: v.union(v.literal("site_engineer"), v.literal("manager"), v.literal("purchase_officer")),
+    assignedSites: v.optional(v.array(v.id("sites"))),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -155,6 +176,7 @@ export const createUser = mutation({
       phoneNumber: args.phoneNumber,
       address: args.address,
       role: args.role,
+      assignedSites: args.assignedSites || [],
       isActive: true,
       createdBy: currentUser._id,
       createdAt: Date.now(),
@@ -175,6 +197,7 @@ export const updateUser = mutation({
     phoneNumber: v.optional(v.string()),
     address: v.optional(v.string()),
     role: v.optional(v.union(v.literal("site_engineer"), v.literal("manager"), v.literal("purchase_officer"))),
+    assignedSites: v.optional(v.array(v.id("sites"))),
     isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -210,6 +233,7 @@ export const updateUser = mutation({
       ...(args.phoneNumber && { phoneNumber: args.phoneNumber }),
       ...(args.address && { address: args.address }),
       ...(args.role && { role: args.role }),
+      ...(args.assignedSites !== undefined && { assignedSites: args.assignedSites }),
       ...(args.isActive !== undefined && { isActive: args.isActive }),
       updatedAt: Date.now(),
     });

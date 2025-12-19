@@ -16,7 +16,8 @@ import {
   Users, 
   ShoppingCart, 
   Package,
-  Building2
+  Building2,
+  MessageCircle
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
@@ -41,6 +42,18 @@ const navigationItems: NavigationItem[] = [
     icon: FileText,
     roles: [ROLES.SITE_ENGINEER],
   },
+  {
+    label: "Chat",
+    href: "/dashboard/chat",
+    icon: MessageCircle,
+    roles: [ROLES.SITE_ENGINEER],
+  },
+  {
+    label: "Inventory",
+    href: "/dashboard/inventory",
+    icon: Package,
+    roles: [ROLES.SITE_ENGINEER],
+  },
   
   // Manager
   {
@@ -59,6 +72,24 @@ const navigationItems: NavigationItem[] = [
     label: "User Management",
     href: "/dashboard/manager/users",
     icon: Users,
+    roles: [ROLES.MANAGER],
+  },
+  {
+    label: "Chat",
+    href: "/dashboard/chat",
+    icon: MessageCircle,
+    roles: [ROLES.MANAGER],
+  },
+  {
+    label: "Vendors",
+    href: "/dashboard/vendors",
+    icon: Building2,
+    roles: [ROLES.MANAGER],
+  },
+  {
+    label: "Inventory",
+    href: "/dashboard/inventory",
+    icon: Package,
     roles: [ROLES.MANAGER],
   },
   
@@ -83,8 +114,20 @@ const navigationItems: NavigationItem[] = [
   },
   {
     label: "Vendors",
-    href: "/dashboard/purchase/vendors",
+    href: "/dashboard/vendors",
     icon: Building2,
+    roles: [ROLES.PURCHASE_OFFICER],
+  },
+  {
+    label: "Inventory",
+    href: "/dashboard/inventory",
+    icon: Package,
+    roles: [ROLES.PURCHASE_OFFICER],
+  },
+  {
+    label: "Chat",
+    href: "/dashboard/chat",
+    icon: MessageCircle,
     roles: [ROLES.PURCHASE_OFFICER],
   },
 ];

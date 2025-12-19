@@ -27,18 +27,22 @@ export async function redirectToDashboard(): Promise<never> {
  * Ensure user has the required role, otherwise redirect to login or their dashboard
  * Server-side only
  */
-export async function requireRole(requiredRole: Role): Promise<void> {
+export async function requireRole(requiredRole: Role | Role[]): Promise<Role> {
   const role = await getUserRole();
 
   if (!role) {
     redirect("/login");
   }
 
-  if (role !== requiredRole) {
+  const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+
+  if (!allowedRoles.includes(role)) {
     // Redirect to their own dashboard
     const dashboardRoute = getRoleDashboardRoute(role);
     redirect(dashboardRoute);
   }
+
+  return role;
 }
 
 /**

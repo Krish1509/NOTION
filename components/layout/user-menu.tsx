@@ -73,7 +73,7 @@ export function UserMenu() {
       <DropdownMenuTrigger asChild>
         <Button 
           variant="ghost" 
-          className="relative h-10 gap-2 rounded-full pl-2 pr-3 hover:bg-muted/50 transition-colors"
+          className="relative h-10 gap-2 rounded-full pl-2 pr-3 hover:bg-accent/50 transition-all hover:shadow-sm"
         >
           <Avatar className="h-8 w-8 border-2 border-primary/20">
             <AvatarImage src={user.imageUrl} alt={displayName} />
@@ -89,13 +89,13 @@ export function UserMenu() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent 
-        className="w-64" 
+        className="w-64 bg-popover/95 backdrop-blur-md border-border/50 shadow-lg" 
         align="end"
         sideOffset={8}
       >
         {/* User Info Header */}
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-2 py-2">
+        <DropdownMenuLabel className="font-normal p-0">
+          <div className="flex flex-col space-y-2 py-2 px-1">
             <div className="flex items-center gap-3">
               <Avatar className="h-12 w-12 border-2 border-primary/20">
                 <AvatarImage src={user.imageUrl} alt={displayName} />
@@ -127,14 +127,14 @@ export function UserMenu() {
         {convexUser && (
           <>
             {convexUser.phoneNumber && (
-              <DropdownMenuItem className="cursor-default focus:bg-transparent">
+              <DropdownMenuItem className="cursor-default focus:bg-transparent hover:bg-transparent">
                 <Phone className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">{convexUser.phoneNumber}</span>
               </DropdownMenuItem>
             )}
             
             {user.primaryEmailAddress && (
-              <DropdownMenuItem className="cursor-default focus:bg-transparent">
+              <DropdownMenuItem className="cursor-default focus:bg-transparent hover:bg-transparent">
                 <Mail className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">{user.primaryEmailAddress.emailAddress}</span>
               </DropdownMenuItem>

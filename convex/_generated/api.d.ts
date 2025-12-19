@@ -9,8 +9,15 @@
  */
 
 import type * as auth from "../auth.js";
-import type * as debug from "../debug.js";
+import type * as chat from "../chat.js";
+import type * as cron from "../cron.js";
+import type * as inventory from "../inventory.js";
+import type * as migrations from "../migrations.js";
+import type * as presence from "../presence.js";
+import type * as sites from "../sites.js";
+import type * as stickyNotes from "../stickyNotes.js";
 import type * as users from "../users.js";
+import type * as vendors from "../vendors.js";
 
 import type {
   ApiFromModules,
@@ -20,8 +27,15 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
-  debug: typeof debug;
+  chat: typeof chat;
+  cron: typeof cron;
+  inventory: typeof inventory;
+  migrations: typeof migrations;
+  presence: typeof presence;
+  sites: typeof sites;
+  stickyNotes: typeof stickyNotes;
   users: typeof users;
+  vendors: typeof vendors;
 }>;
 
 /**

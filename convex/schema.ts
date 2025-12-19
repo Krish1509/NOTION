@@ -22,6 +22,7 @@ export default defineSchema({
       v.literal("manager"),
       v.literal("purchase_officer")
     ),
+    assignedSites: v.optional(v.array(v.id("sites"))), // Sites assigned to site engineers
     isActive: v.boolean(),
     createdBy: v.optional(v.id("users")), // Manager who created this user (null for first manager)
     createdAt: v.number(),
@@ -106,13 +107,131 @@ export default defineSchema({
   // Vendors Table
   // ============================================================================
   vendors: defineTable({
-    name: v.string(),
-    contactPerson: v.string(),
-    phoneNumber: v.string(),
-    email: v.optional(v.string()),
-    address: v.string(),
+    companyName: v.string(), // Company Name
+    email: v.string(), // Email
+    phone: v.optional(v.string()), // Phone (optional)
+    gstNumber: v.string(), // GST Number
+    address: v.string(), // Address
     isActive: v.boolean(),
     createdBy: v.id("users"), // Purchase Officer
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_company_name", ["companyName"])
+    .index("by_is_active", ["isActive"])
+    .index("by_created_at", ["createdAt"]),
+
+  // ============================================================================
+  // Inventory Table
+  // ============================================================================
+  inventory: defineTable({
+    itemName: v.string(), // Item Name
+    unit: v.optional(v.string()), // Unit (e.g., bags, kg, mm, gm, nos, ton) - optional
+    centralStock: v.optional(v.number()), // Central Stock quantity - optional
+    vendorId: v.optional(v.id("vendors")), // Linked vendor - optional
+    images: v.optional(v.array(v.object({
+      imageUrl: v.string(), // Cloudflare R2 public URL
+      imageKey: v.string(), // R2 object key for deletion/updates
+      uploadedBy: v.id("users"), // User who uploaded the image
+      uploadedAt: v.number(), // Upload timestamp
+    }))), // Array of images (supports multiple images)
+    isActive: v.boolean(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_item_name", ["itemName"])
+    .index("by_vendor_id", ["vendorId"])
+    .index("by_is_active", ["isActive"])
+    .index("by_created_at", ["createdAt"]),
+
+  // ============================================================================
+  // Chat Conversations Table
+  // ============================================================================
+  conversations: defineTable({
+    participants: v.array(v.id("users")), // Always 2 users for one-on-one chats
+    lastMessageAt: v.optional(v.number()),
+    lastMessage: v.optional(v.string()),
+    lastMessageSenderId: v.optional(v.id("users")),
+    unreadCount: v.any(), // Dynamic object mapping userId to unread count { "userId": count }
+    mutedBy: v.optional(v.array(v.id("users"))), // Users who muted this conversation
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_participants", ["participants"])
+    .index("by_last_message_at", ["lastMessageAt"]),
+
+  // ============================================================================
+  // Chat Messages Table
+  // ============================================================================
+  messages: defineTable({
+    conversationId: v.id("conversations"),
+    senderId: v.id("users"),
+    content: v.string(),
+    readBy: v.array(v.id("users")), // Users who have read this message
+    createdAt: v.number(),
+  })
+    .index("by_conversation_id", ["conversationId"])
+    .index("by_conversation_created", ["conversationId", "createdAt"])
+    .index("by_sender_id", ["senderId"]),
+
+  // ============================================================================
+  // User Presence Table
+  // ============================================================================
+  userPresence: defineTable({
+    userId: v.id("users"),
+    isOnline: v.boolean(),
+    lastSeenAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_id", ["userId"])
+    .index("by_is_online", ["isOnline"]),
+
+  // ============================================================================
+  // Sticky Notes Table
+  // ============================================================================
+  stickyNotes: defineTable({
+    createdBy: v.id("users"), // User who created the note
+    assignedTo: v.id("users"), // User who should see the note (can be different for managers)
+    title: v.string(),
+    content: v.string(),
+    color: v.union(
+      v.literal("yellow"),
+      v.literal("pink"),
+      v.literal("blue"),
+      v.literal("green"),
+      v.literal("purple"),
+      v.literal("orange")
+    ),
+    reminderAt: v.optional(v.number()), // Optional timestamp for reminder notification
+    isCompleted: v.boolean(),
+    isDeleted: v.boolean(),
+    reminderTriggered: v.optional(v.boolean()), // Track if reminder was already triggered
+    // Checklist items for todo functionality
+    checklistItems: v.optional(v.array(v.object({
+      id: v.string(),
+      text: v.string(),
+      completed: v.boolean(),
+    }))),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_assigned_to", ["assignedTo"])
+    .index("by_created_by", ["createdBy"])
+    .index("by_reminder_at", ["reminderAt"])
+    .index("by_is_deleted", ["isDeleted"])
+    .index("by_is_completed", ["isCompleted"]),
+
+  // ============================================================================
+  // Sites Table
+  // ============================================================================
+  sites: defineTable({
+    name: v.string(), // Site name
+    code: v.optional(v.string()), // Site code/identifier
+    address: v.optional(v.string()), // Site address
+    description: v.optional(v.string()), // Site description
+    isActive: v.boolean(),
+    createdBy: v.id("users"), // Manager who created this site
     createdAt: v.number(),
     updatedAt: v.number(),
   })

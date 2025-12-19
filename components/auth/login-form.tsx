@@ -51,12 +51,9 @@ export function LoginForm() {
         // Redirect will be handled by middleware based on role
         router.push("/dashboard");
       } else {
-        // Handle other statuses
-        console.log("Sign in status:", result.status);
         setError("Login failed. Please try again.");
       }
     } catch (err) {
-      console.error("Login error:", err);
       
       // Extract error message
       let errorMessage = "Invalid username or password";

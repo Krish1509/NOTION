@@ -29,6 +29,8 @@ import {
 } from "@/components/ui/select";
 import { ROLES, ROLE_LABELS, Role } from "@/lib/auth/roles";
 import { Eye, EyeOff } from "lucide-react";
+import { SiteSelector } from "./site-selector";
+import type { Id } from "@/convex/_generated/dataModel";
 
 interface CreateUserDialogProps {
   open: boolean;
@@ -50,6 +52,7 @@ export function CreateUserDialog({ open, onOpenChange }: CreateUserDialogProps) 
     address: "",
     role: "" as Role | "",
     password: "",
+    assignedSites: [] as Id<"sites">[],
   });
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -62,6 +65,7 @@ export function CreateUserDialog({ open, onOpenChange }: CreateUserDialogProps) 
         address: "",
         role: "",
         password: "",
+        assignedSites: [],
       });
       setShowPassword(false);
       setError("");
@@ -101,12 +105,12 @@ export function CreateUserDialog({ open, onOpenChange }: CreateUserDialogProps) 
         phoneNumber: formData.phoneNumber,
         address: formData.address,
         role: formData.role as Role,
+        assignedSites: formData.assignedSites,
       });
 
       // Reset form and close dialog - handleOpenChange will reset the form
       handleOpenChange(false);
     } catch (err) {
-      console.error("Error creating user:", err);
       const errorMessage = err instanceof Error ? err.message : "Failed to create user";
       setError(errorMessage);
     } finally {
@@ -224,7 +228,7 @@ export function CreateUserDialog({ open, onOpenChange }: CreateUserDialogProps) 
             <Select
               value={formData.role}
               onValueChange={(value) =>
-                setFormData({ ...formData, role: value as Role })
+                setFormData({ ...formData, role: value as Role, assignedSites: [] })
               }
               disabled={isLoading}
             >
@@ -244,6 +248,22 @@ export function CreateUserDialog({ open, onOpenChange }: CreateUserDialogProps) 
               </SelectContent>
             </Select>
           </div>
+
+          {/* Site Selection - Only for Site Engineers */}
+          {formData.role === ROLES.SITE_ENGINEER && (
+            <div className="space-y-2">
+              <SiteSelector
+                selectedSites={formData.assignedSites}
+                onSelectionChange={(sites) =>
+                  setFormData({ ...formData, assignedSites: sites })
+                }
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Select one or more sites to assign to this site engineer
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md p-3 flex items-start gap-2">

@@ -69,7 +69,6 @@ export function PasswordForm() {
         confirmPassword: "",
       });
     } catch (error) {
-      console.error("Error changing password:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to change password";
       toast.error(errorMessage);
     } finally {

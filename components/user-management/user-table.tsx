@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
 import {
@@ -39,7 +39,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { MoreHorizontal, Edit, UserX, UserCheck, Trash2 } from "lucide-react";
-import { ROLE_LABELS } from "@/lib/auth/roles";
+import { ROLE_LABELS, ROLES } from "@/lib/auth/roles";
 import { Doc } from "@/convex/_generated/dataModel";
 import { EditUserDialog } from "./edit-user-dialog";
 import { toast } from "sonner";
@@ -53,6 +53,7 @@ export function UserTable({ users }: UserTableProps) {
   const disableUser = useMutation(api.users.disableUser);
   const enableUser = useMutation(api.users.enableUser);
   const deleteUser = useMutation(api.users.deleteUser);
+  const allSites = useQuery(api.sites.getAllSites, {});
 
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<Doc<"users"> | null>(null);
@@ -83,7 +84,6 @@ export function UserTable({ users }: UserTableProps) {
         toast.success("User enabled successfully");
       }
     } catch (error) {
-      console.error("Error toggling user status:", error);
       toast.error("Failed to update user status");
     } finally {
       setLoadingUserId(null);
@@ -107,14 +107,12 @@ export function UserTable({ users }: UserTableProps) {
           body: JSON.stringify({ clerkUserId: deletingUser.clerkUserId }),
         });
       } catch (clerkError) {
-        console.warn("Failed to delete from Clerk:", clerkError);
         // Continue anyway - Convex delete was successful
       }
 
       toast.success("User deleted successfully");
       setDeletingUser(null);
     } catch (error) {
-      console.error("Error deleting user:", error);
       toast.error("Failed to delete user");
     } finally {
       setLoadingUserId(null);
@@ -130,6 +128,7 @@ export function UserTable({ users }: UserTableProps) {
             <TableHead>Username</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Phone</TableHead>
+            <TableHead>Sites</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Created</TableHead>
             <TableHead className="text-right">Actions</TableHead>
@@ -153,6 +152,24 @@ export function UserTable({ users }: UserTableProps) {
                 <Badge variant="outline">{ROLE_LABELS[user.role]}</Badge>
               </TableCell>
               <TableCell>{user.phoneNumber}</TableCell>
+              <TableCell>
+                {user.role === ROLES.SITE_ENGINEER && user.assignedSites && user.assignedSites.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {user.assignedSites.map((siteId) => {
+                      const site = allSites?.find((s) => s._id === siteId);
+                      return site ? (
+                        <Badge key={siteId} variant="secondary" className="text-xs">
+                          {site.name}
+                        </Badge>
+                      ) : null;
+                    })}
+                  </div>
+                ) : user.role === ROLES.SITE_ENGINEER ? (
+                  <span className="text-xs text-muted-foreground">No sites assigned</span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </TableCell>
               <TableCell>
                 <Badge variant={user.isActive ? "default" : "secondary"}>
                   {user.isActive ? "Active" : "Disabled"}

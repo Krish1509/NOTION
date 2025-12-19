@@ -33,6 +33,8 @@ import { ROLES, ROLE_LABELS, Role } from "@/lib/auth/roles";
 import { Eye, EyeOff, Loader2, Save, X } from "lucide-react";
 import { Doc } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
+import { SiteSelector } from "./site-selector";
+import type { Id } from "@/convex/_generated/dataModel";
 
 interface EditUserDialogProps {
   open: boolean;
@@ -58,6 +60,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
     phoneNumber: "",
     address: "",
     role: "" as Role | "",
+    assignedSites: [] as Id<"sites">[],
     password: "", // Optional - only if manager wants to change it
     currentPassword: "", // For self password change
     confirmPassword: "", // For password confirmation
@@ -71,6 +74,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
         phoneNumber: user.phoneNumber || "",
         address: user.address || "",
         role: user.role,
+        assignedSites: user.assignedSites || [],
         password: "", // Always empty for security
         currentPassword: "",
         confirmPassword: "",
@@ -111,6 +115,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
         phoneNumber: formData.phoneNumber,
         address: formData.address,
         role: formData.role as Role,
+        assignedSites: formData.assignedSites,
       });
 
       // If password is provided, update it
@@ -151,7 +156,6 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
       toast.success(isEditingSelf ? "Profile updated successfully!" : "User updated successfully!");
       onOpenChange(false);
     } catch (err) {
-      console.error("Error updating user:", err);
       const errorMessage = err instanceof Error ? err.message : "Failed to update user";
       toast.error(errorMessage);
     } finally {
@@ -167,6 +171,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
         phoneNumber: "",
         address: "",
         role: "",
+        assignedSites: [],
         password: "",
         currentPassword: "",
         confirmPassword: "",
@@ -405,7 +410,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
             <Select
               value={formData.role}
               onValueChange={(value) =>
-                setFormData({ ...formData, role: value as Role })
+                setFormData({ ...formData, role: value as Role, assignedSites: [] })
               }
               disabled={isLoading || isEditingSelf}
             >
@@ -430,6 +435,22 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
               </p>
             )}
           </div>
+
+          {/* Site Selection - Only for Site Engineers */}
+          {formData.role === ROLES.SITE_ENGINEER && (
+            <div className="space-y-2">
+              <SiteSelector
+                selectedSites={formData.assignedSites}
+                onSelectionChange={(sites) =>
+                  setFormData({ ...formData, assignedSites: sites })
+                }
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Select one or more sites to assign to this site engineer
+              </p>
+            </div>
+          )}
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
