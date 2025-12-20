@@ -340,10 +340,7 @@ export const sendMessage = mutation({
     });
 
     // Update conversation
-    const otherUserId = conversation.participants.find(
-      (id) => id !== currentUser._id
-    );
-
+    // otherUserId is already declared above, reuse it
     const currentUnreadCount = (conversation.unreadCount as any) || {};
     const otherUserUnreadCount = currentUnreadCount[otherUserId as string] || 0;
 

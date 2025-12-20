@@ -44,7 +44,7 @@ import { useUserRole } from "@/hooks/use-user-role";
 import { ROLES } from "@/lib/auth/roles";
 import { InventoryFormDialog } from "./inventory-form-dialog";
 import { toast } from "sonner";
-import type { Doc } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 
 interface InventoryTableProps {
   items: typeof import("@/convex/_generated/api").api.inventory.getAllInventoryItems._returnType | undefined;
@@ -245,9 +245,9 @@ export function InventoryTable({ items }: InventoryTableProps) {
           initialData={editingItem
             ? {
                 itemName: editingItem.itemName,
-                unit: editingItem.unit,
-                centralStock: editingItem.centralStock,
-                vendorId: editingItem.vendorId,
+                unit: editingItem.unit ?? "",
+                centralStock: editingItem.centralStock ?? 0,
+                vendorId: editingItem.vendorId ?? ("" as Id<"vendors">),
               }
             : null}
           mode="edit"

@@ -114,9 +114,9 @@ export function InventoryFormDialog({
     } else if (currentItem && !isAddImageMode) {
       setFormData({
         itemName: currentItem.itemName,
-        unit: currentItem.unit,
+        unit: currentItem.unit ?? "",
         centralStock: currentItem.centralStock,
-        vendorId: currentItem.vendorId,
+        vendorId: currentItem.vendorId ?? ("" as Id<"vendors"> | ""),
       });
     } else {
       setFormData({

@@ -9,7 +9,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "create-manager": "node scripts/create-default-manager.js"
+    "create-manager": "node scripts/create-default-manager.js",
+    "vercel:setup": "node scripts/setup-vercel-env.js",
+    "vercel:deploy": "vercel --prod",
+    "vercel:preview": "vercel",
+    "deploy:all": "npm run vercel:setup && npm run vercel:deploy"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.955.0",
