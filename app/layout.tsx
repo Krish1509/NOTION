@@ -6,6 +6,7 @@ import { ConvexClientProvider } from "./convex-provider";
 import { ThemeInitializer } from "./theme-initializer";
 import { Providers } from "./providers";
 import { Toaster } from "@/components/ui/sonner";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,11 +51,13 @@ export default function RootLayout({
             },
           }}
         >
-          <Providers>
-            <ThemeInitializer />
-            <ConvexClientProvider>{children}</ConvexClientProvider>
-            <Toaster />
-          </Providers>
+          <ErrorBoundary>
+            <Providers>
+              <ThemeInitializer />
+              <ConvexClientProvider>{children}</ConvexClientProvider>
+              <Toaster />
+            </Providers>
+          </ErrorBoundary>
         </ClerkProvider>
       </body>
     </html>
