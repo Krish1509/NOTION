@@ -15,6 +15,7 @@ import { PresenceProvider } from "@/components/chat/presence-provider";
 import { ChatWidthProvider } from "@/components/chat/chat-width-provider";
 import { ReminderScheduler } from "@/components/sticky-notes/reminder-scheduler";
 import { getUserRole } from "@/lib/auth/get-user-role";
+import { UserSync } from "@/components/auth/user-sync";
 
 // Mark as dynamic since we use auth() which requires headers()
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     <PresenceProvider>
       <ChatWidthProvider>
         <SidebarProvider>
+          <UserSync />
           <ReminderScheduler />
           <SidebarWrapper userRole={role}>
             <Header userRole={role} />

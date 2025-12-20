@@ -124,6 +124,59 @@ export const getUsersByRole = query({
 // ============================================================================
 
 /**
+ * Auto-sync current user from Clerk to Convex
+ * Creates user in Convex if they don't exist
+ * Can be called by any authenticated user to sync themselves
+ */
+export const syncCurrentUser = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // Check if user already exists
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", identity.subject))
+      .unique();
+
+    if (existingUser) {
+      return existingUser._id; // User already exists
+    }
+
+    // Get role from Clerk metadata
+    const metadata = identity.publicMetadata as Record<string, unknown> | undefined;
+    const role = (metadata?.role as string | undefined) || "site_engineer";
+    const validRole = 
+      role === "manager" ? "manager" :
+      role === "purchase_officer" ? "purchase_officer" :
+      "site_engineer";
+
+    // Create user from Clerk data
+    const username = (identity.username as string | undefined) || `user_${identity.subject.slice(0, 8)}`;
+    const name = (identity.name as string | undefined) || username || "User";
+    const phoneNumber = (identity.phoneNumber as string | undefined) || "";
+
+    const userId = await ctx.db.insert("users", {
+      clerkUserId: identity.subject,
+      username: username,
+      fullName: name,
+      phoneNumber: phoneNumber,
+      address: "",
+      role: validRole,
+      assignedSites: [],
+      isActive: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return userId;
+  },
+});
+
+/**
  * Create a new user (Manager only)
  * Note: Clerk user must be created first via Clerk API
  */

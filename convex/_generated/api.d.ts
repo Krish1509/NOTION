@@ -16,6 +16,7 @@ import type * as migrations from "../migrations.js";
 import type * as presence from "../presence.js";
 import type * as sites from "../sites.js";
 import type * as stickyNotes from "../stickyNotes.js";
+import type * as syncUser from "../syncUser.js";
 import type * as users from "../users.js";
 import type * as vendors from "../vendors.js";
 
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   presence: typeof presence;
   sites: typeof sites;
   stickyNotes: typeof stickyNotes;
+  syncUser: typeof syncUser;
   users: typeof users;
   vendors: typeof vendors;
 }>;
