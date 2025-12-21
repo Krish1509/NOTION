@@ -75,12 +75,6 @@ const navigationItems: NavigationItem[] = [
     roles: [ROLES.MANAGER],
   },
   {
-    label: "Cost Comparisons",
-    href: "/dashboard/manager/cost-comparisons",
-    icon: FileText,
-    roles: [ROLES.MANAGER],
-  },
-  {
     label: "User Management",
     href: "/dashboard/manager/users",
     icon: Users,

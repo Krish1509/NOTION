@@ -71,7 +71,7 @@ export function CameraDialog({ open, onOpenChange, onCapture, multiple = false }
             advanced: [{ torch: true } as any],
           });
         } catch (e) {
-          console.log("Torch not supported on this device");
+          // Torch not supported on this device
         }
       }
     } catch (err: any) {
@@ -106,7 +106,7 @@ export function CameraDialog({ open, onOpenChange, onCapture, multiple = false }
         });
       }
     } catch (e) {
-      console.log("Flash/torch not supported");
+      // Flash/torch not supported
     }
   };
 
