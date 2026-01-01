@@ -249,7 +249,7 @@ export function SiteRequestsContent() {
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("approved");
   const previousRequestsRef = useRef<typeof allRequests>(undefined);
 
   // Debounce search query for better performance

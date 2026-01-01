@@ -71,12 +71,40 @@ export function RequestDetailsDialog({
   const [selectedItemName, setSelectedItemName] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<Id<"sites"> | null>(null);
   const [selectedItemsForAction, setSelectedItemsForAction] = useState<Set<Id<"requests">>>(new Set());
+  const [itemActions, setItemActions] = useState<Record<Id<"requests">, "approve" | "reject" | "direct_po" | null>>({});
+  const [showBatchProcessDialog, setShowBatchProcessDialog] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [showDirectPOConfirm, setShowDirectPOConfirm] = useState(false);
+  const [showItemApproveConfirm, setShowItemApproveConfirm] = useState<Id<"requests"> | null>(null);
+  const [showItemDirectPOConfirm, setShowItemDirectPOConfirm] = useState<Id<"requests"> | null>(null);
   const hasRefreshedRef = useRef(false);
+
+  // Helper function to collect photos from both photo and photos fields
+  const getItemPhotos = (item: any) => {
+    const photos: Array<{ imageUrl: string; imageKey: string }> = [];
+
+    // Check for new photos array first
+    if (item.photos && item.photos.length > 0) {
+      item.photos.forEach((photo: { imageUrl: string; imageKey: string }) => {
+        photos.push({
+          imageUrl: photo.imageUrl,
+          imageKey: photo.imageKey,
+        });
+      });
+    }
+    // Fallback to legacy photo field
+    else if (item.photo) {
+      photos.push({
+        imageUrl: item.photo.imageUrl,
+        imageKey: item.photo.imageKey,
+      });
+    }
+
+    return photos;
+  };
 
   const isManager = userRole === ROLES.MANAGER;
   const isSiteEngineer = userRole === ROLES.SITE_ENGINEER;
-  const canApprove = isManager && request?.status === "pending";
-  const canReject = isManager && request?.status === "pending";
   const canMarkDelivery =
     isSiteEngineer && request?.status === "delivery_stage" && request?.createdBy;
 
@@ -87,10 +115,36 @@ export function RequestDetailsDialog({
   const pendingItems = allRequests?.filter((item) => item.status === "pending") || [];
   const hasMultiplePendingItems = pendingItems.length > 1;
 
+  // Manager permissions based on pending items
+  const canApprove = isManager && pendingItems.length > 0;
+  const canReject = isManager && pendingItems.length > 0;
+
   // Check if all items in the request have the same status
   const allItemsHaveSameStatus = allRequests && allRequests.length > 0
     ? allRequests.every((item) => item.status === allRequests[0].status)
     : true;
+
+  // Determine overall request status
+  const getOverallStatus = () => {
+    if (allItemsHaveSameStatus) {
+      return allRequests?.[0]?.status || request?.status;
+    }
+
+    // Check if we have mixed processed statuses (not pending/draft)
+    const processedStatuses = allRequests?.filter(item =>
+      !["pending", "draft"].includes(item.status)
+    ) || [];
+
+    if (processedStatuses.length > 0 && processedStatuses.length < (allRequests?.length || 0)) {
+      // Some items processed, some still pending - partially processed
+      return "partially_processed";
+    }
+
+    // All items are pending/draft or truly mixed
+    return request?.status;
+  };
+
+  const overallStatus = getOverallStatus();
 
   // Collect all photos from all request items (support both photo and photos fields)
   const allPhotos = allRequests?.reduce((photos, item) => {
@@ -122,16 +176,22 @@ export function RequestDetailsDialog({
       setItemRejectionReasons({});
       setShowItemRejectionInput(null);
       setSelectedItemsForAction(new Set());
+      setItemActions({});
+      setShowBatchProcessDialog(false);
+      setShowApproveConfirm(false);
+      setShowDirectPOConfirm(false);
+      setShowItemApproveConfirm(null);
+      setShowItemDirectPOConfirm(null);
+      setRejectionReason("");
+      setShowRejectionInput(false);
       hasRefreshedRef.current = false;
     }
   }, [open]);
 
-  // Refresh only once after successful action
-  const refreshOnce = () => {
-    if (!hasRefreshedRef.current) {
-      hasRefreshedRef.current = true;
-      window.location.reload();
-    }
+  // Close dialog and refresh data after successful action
+  const closeAndRefresh = () => {
+    onOpenChange(false);
+    // Data will refresh automatically through Convex queries
   };
 
   // Per-item handlers
@@ -143,7 +203,6 @@ export function RequestDetailsDialog({
         status: "approved",
       });
       toast.success("Item approved successfully");
-      refreshOnce();
     } catch (error: any) {
       toast.error(error.message || "Failed to approve item");
     } finally {
@@ -172,7 +231,6 @@ export function RequestDetailsDialog({
         return next;
       });
       setShowItemRejectionInput(null);
-      refreshOnce();
     } catch (error: any) {
       toast.error(error.message || "Failed to reject item");
     } finally {
@@ -188,7 +246,6 @@ export function RequestDetailsDialog({
         status: "direct_po",
       });
       toast.success("Item sent directly to PO stage");
-      refreshOnce();
     } catch (error: any) {
       toast.error(error.message || "Failed to process Direct PO");
     } finally {
@@ -214,6 +271,33 @@ export function RequestDetailsDialog({
     setSelectedItemsForAction(new Set());
   };
 
+  // Batch processing helpers
+  const setItemAction = (itemId: Id<"requests">, action: "approve" | "reject" | "direct_po" | null) => {
+    setItemActions(prev => ({
+      ...prev,
+      [itemId]: action
+    }));
+  };
+
+  const getItemAction = (itemId: Id<"requests">) => {
+    return itemActions[itemId] || null;
+  };
+
+  const clearItemActions = () => {
+    setItemActions({});
+    setItemRejectionReasons({});
+  };
+
+  const getBatchSummary = () => {
+    const actions = Object.values(itemActions).filter(action => action !== null);
+    const summary = {
+      approve: actions.filter(a => a === "approve").length,
+      reject: actions.filter(a => a === "reject").length,
+      direct_po: actions.filter(a => a === "direct_po").length,
+    };
+    return summary;
+  };
+
   // Bulk handlers for all items
   const handleApproveAll = async () => {
     const itemsToApprove = selectedItemsForAction.size > 0
@@ -233,7 +317,7 @@ export function RequestDetailsDialog({
       });
       toast.success(`${itemsToApprove.length} item(s) approved successfully`);
       setSelectedItemsForAction(new Set()); // Clear selection after action
-      refreshOnce();
+      closeAndRefresh();
     } catch (error: any) {
       toast.error(error.message || "Failed to approve items");
     } finally {
@@ -259,7 +343,7 @@ export function RequestDetailsDialog({
       });
       toast.success(`${itemsToDirectPO.length} item(s) sent directly to PO stage`);
       setSelectedItemsForAction(new Set()); // Clear selection after action
-      refreshOnce();
+      closeAndRefresh();
     } catch (error: any) {
       toast.error(error.message || "Failed to process Direct PO for items");
     } finally {
@@ -293,9 +377,83 @@ export function RequestDetailsDialog({
       setSelectedItemsForAction(new Set()); // Clear selection after action
       setShowRejectionInput(false);
       setRejectionReason("");
-      refreshOnce();
+      closeAndRefresh();
     } catch (error: any) {
       toast.error(error.message || "Failed to reject items");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Mixed batch processing - handle different actions for different items
+  const handleBatchProcessItems = async () => {
+    const itemsToProcess = Object.entries(itemActions).filter(([_, action]) => action !== null);
+
+    if (itemsToProcess.length === 0) {
+      toast.error("No actions assigned to selected items");
+      return;
+    }
+
+    // Check if any rejections need reasons
+    const rejectionItems = itemsToProcess.filter(([_, action]) => action === "reject");
+    const missingReasons = rejectionItems.filter(([itemId]) => !itemRejectionReasons[itemId]?.trim());
+
+    if (missingReasons.length > 0) {
+      toast.error("Please provide rejection reasons for all items being rejected");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Group items by action
+      const approveItems = itemsToProcess.filter(([_, action]) => action === "approve").map(([id]) => id as Id<"requests">);
+      const rejectItems = itemsToProcess.filter(([_, action]) => action === "reject").map(([id]) => id as Id<"requests">);
+      const directPOItems = itemsToProcess.filter(([_, action]) => action === "direct_po").map(([id]) => id as Id<"requests">);
+
+      // Execute actions
+      const promises = [];
+
+      if (approveItems.length > 0) {
+        promises.push(
+          bulkUpdateStatus({
+            requestIds: approveItems,
+            status: "approved",
+          })
+        );
+      }
+
+      if (rejectItems.length > 0) {
+        promises.push(
+          bulkUpdateStatus({
+            requestIds: rejectItems,
+            status: "rejected",
+            rejectionReason: rejectItems.map(id => itemRejectionReasons[id]?.trim()).join("; "),
+          })
+        );
+      }
+
+      if (directPOItems.length > 0) {
+        promises.push(
+          bulkUpdateStatus({
+            requestIds: directPOItems,
+            status: "direct_po",
+          })
+        );
+      }
+
+      await Promise.all(promises);
+
+      const totalProcessed = approveItems.length + rejectItems.length + directPOItems.length;
+      toast.success(`${totalProcessed} item(s) processed successfully`);
+
+      // Clear state
+      setItemActions({});
+      setItemRejectionReasons({});
+      setSelectedItemsForAction(new Set());
+      setShowBatchProcessDialog(false);
+      closeAndRefresh();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to process items");
     } finally {
       setIsLoading(false);
     }
@@ -311,7 +469,7 @@ export function RequestDetailsDialog({
         status: "approved",
       });
       toast.success("Request approved successfully");
-      refreshOnce();
+      closeAndRefresh();
     } catch (error: any) {
       toast.error(error.message || "Failed to approve request");
     } finally {
@@ -426,13 +584,123 @@ export function RequestDetailsDialog({
             Delivered
           </Badge>
         );
+      case "partially_processed":
+        return (
+          <Badge
+            variant="outline"
+            className="bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800"
+          >
+            Partially Processed
+          </Badge>
+        );
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
+  // Batch Process Dialog
+  const BatchProcessDialog = () => {
+    const summary = getBatchSummary();
+    const hasActions = Object.values(itemActions).some(action => action !== null);
+
+    return (
+      <Dialog open={showBatchProcessDialog} onOpenChange={setShowBatchProcessDialog}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Process Selected Items</DialogTitle>
+            <DialogDescription>
+              Review and confirm the actions for selected items
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Action Summary */}
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Actions Summary:</Label>
+              <div className="grid grid-cols-1 gap-2">
+                {summary.approve > 0 && (
+                  <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-md dark:bg-green-950 dark:border-green-800">
+                    <span className="text-sm font-medium text-green-800 dark:text-green-200">Approve</span>
+                    <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-100">
+                      {summary.approve} item{summary.approve > 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                )}
+                {summary.reject > 0 && (
+                  <div className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-md dark:bg-red-950 dark:border-red-800">
+                    <span className="text-sm font-medium text-red-800 dark:text-red-200">Reject</span>
+                    <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300 dark:bg-red-900 dark:text-red-100">
+                      {summary.reject} item{summary.reject > 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                )}
+                {summary.direct_po > 0 && (
+                  <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-md dark:bg-blue-950 dark:border-blue-800">
+                    <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Direct PO</span>
+                    <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900 dark:text-blue-100">
+                      {summary.direct_po} item{summary.direct_po > 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Rejection Reasons */}
+            {summary.reject > 0 && (
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">Rejection Reasons:</Label>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {Object.entries(itemActions)
+                    .filter(([_, action]) => action === "reject")
+                    .map(([itemId]) => {
+                      const item = allRequests?.find(r => r._id === itemId);
+                      return (
+                        <div key={itemId} className="p-2 bg-gray-50 border rounded dark:bg-gray-900">
+                          <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Item {item?.itemOrder || itemId.slice(-4)}: {item?.itemName}
+                          </div>
+                          <div className="text-xs text-gray-800 dark:text-gray-200">
+                            {itemRejectionReasons[itemId] || "No reason provided"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {!hasActions && (
+              <div className="text-center py-4 text-muted-foreground">
+                No actions assigned to selected items
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowBatchProcessDialog(false)}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBatchProcessItems}
+              disabled={isLoading || !hasActions}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {isLoading ? "Processing..." : "Confirm Actions"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <div>
+      <BatchProcessDialog />
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={cn(
         "w-[95vw] sm:w-full max-w-[95vw] sm:max-w-[640px] md:max-w-[768px] lg:max-w-[1024px] xl:max-w-[1600px] max-h-[95vh] overflow-hidden flex flex-col p-0 gap-0",
         isMobileLayout && "max-w-[95vw] w-[95vw]"
@@ -451,19 +719,23 @@ export function RequestDetailsDialog({
                 <span className="font-mono font-semibold text-foreground">#{request.requestNumber}</span>
               </DialogDescription>
               <div className="flex items-center gap-2 flex-shrink-0">
-                {allItemsHaveSameStatus && getStatusBadge(request.status)}
-                {request.isUrgent && (
-                  <Badge
-                    variant="destructive"
-                    className={cn(
-                      "flex items-center gap-1.5",
-                      isMobileLayout ? "px-2 py-1 text-xs" : "px-3 py-1.5"
-                    )}
-                  >
-                    <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4" />
-                    {isMobileLayout ? "URGENT" : "Urgent"}
-                  </Badge>
-                )}
+                {allRequests && allRequests.some(item => item.isUrgent) && (() => {
+                  const urgentCount = allRequests.filter(item => item.isUrgent).length;
+                  const totalCount = allRequests.length;
+                  return (
+                    <Badge
+                      variant="destructive"
+                      className={cn(
+                        "flex items-center gap-1.5",
+                        isMobileLayout ? "px-2 py-1 text-xs" : "px-3 py-1.5"
+                      )}
+                    >
+                      <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4" />
+                      {isMobileLayout ? `${urgentCount}/${totalCount}` : `${urgentCount}/${totalCount} Urgent`}
+                    </Badge>
+                  );
+                })()}
+                {(allItemsHaveSameStatus || overallStatus === "partially_processed") && getStatusBadge(overallStatus || request.status)}
               </div>
             </div>
           </div>
@@ -548,11 +820,6 @@ export function RequestDetailsDialog({
                     ) : (
                       <p className="font-semibold text-base">—</p>
                     )}
-                    {request.site?.code && (
-                      <p className="text-sm text-muted-foreground font-mono">
-                        Code: {request.site.code}
-                      </p>
-                    )}
                 {request.site?.address && (
                       <div className="flex items-center gap-1 mt-1">
                         <p className="text-xs text-muted-foreground line-clamp-2">
@@ -610,8 +877,8 @@ export function RequestDetailsDialog({
           <Separator />
 
 
-          {/* Request Images Gallery */}
-          {allPhotos.length > 0 && (
+          {/* Request Images Gallery - Hidden for Managers */}
+          {allPhotos.length > 0 && !isManager && (
             <div className="space-y-3">
               <Label className="text-muted-foreground font-bold">
                 Request Photos ({allPhotos.length})
@@ -627,7 +894,7 @@ export function RequestDetailsDialog({
             </div>
           )}
 
-          {/* All Items Details */}
+          {/* All Items Details - Card Grid Layout */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <Label className="text-muted-foreground font-bold">
@@ -639,188 +906,151 @@ export function RequestDetailsDialog({
               </Label>
             </div>
 
-            {/* Display all items - Simple Mobile Layout for Site Engineers */}
+            {/* Display all items in proper Card Grid Layout */}
             {allRequests && allRequests.length > 0 ? (
-              isMobileLayout ? (
-                // Simple list layout for mobile site engineers
-                <div className="space-y-4">
-                  {allRequests
-                    .sort((a, b) => {
-                      const orderA = a.itemOrder ?? a.createdAt;
-                      const orderB = b.itemOrder ?? b.createdAt;
-                      return orderA - orderB;
-                    })
-                    .map((item, idx) => {
-                      const displayNumber = item.itemOrder ?? idx + 1;
-                      return (
-                        <div
-                          key={item._id}
-                          className="border rounded-lg p-4 bg-card space-y-3"
-                        >
-                          {/* Simple header */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Badge
-                                variant="outline"
-                                className="text-sm px-3 py-1 font-semibold"
-                              >
-                                #{displayNumber}
-                              </Badge>
-                              {item.isUrgent && (
-                                <Badge variant="destructive" className="text-sm px-2 py-1">
-                                  <AlertCircle className="h-4 w-4 mr-1" />
-                                  URGENT
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex-shrink-0">
-                              {getStatusBadge(item.status)}
-                            </div>
-                          </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {(allRequests || [])
+                  .sort((a, b) => {
+                    const orderA = a.itemOrder ?? a.createdAt;
+                    const orderB = b.itemOrder ?? b.createdAt;
+                    return orderA - orderB;
+                  })
+                  .map((item, idx) => {
+                    const isPending = item.status === "pending";
+                    const displayNumber = item.itemOrder ?? idx + 1;
+                    const isSelected = selectedItemsForAction.has(item._id);
+                    const itemPhotos = getItemPhotos(item);
 
-                          {/* Simple item details */}
-                          <div className="space-y-3">
-                            <div className="space-y-1">
-                              <Label className="text-sm font-semibold text-muted-foreground">Material</Label>
-                              <button
-                                onClick={() => setSelectedItemName(item.itemName)}
-                                className="font-semibold text-lg text-foreground hover:text-primary hover:bg-muted/50 rounded-md px-3 py-2 -mx-3 -my-2 transition-colors cursor-pointer text-left w-full block"
-                              >
-                                {item.itemName}
-                              </button>
-                            </div>
-
-                            <div className="space-y-1">
-                              <Label className="text-sm font-semibold text-muted-foreground">How Many</Label>
-                              <p className="font-semibold text-lg">
-                                {item.quantity} <span className="text-muted-foreground font-normal text-base">{item.unit}</span>
-                              </p>
-                            </div>
-
-                            {item.description && (
-                              <div className="space-y-1">
-                                <Label className="text-sm font-semibold text-muted-foreground">Details</Label>
-                                <p className="text-base leading-relaxed">{item.description}</p>
-                              </div>
-                            )}
-
-                            {item.specsBrand && (
-                              <div className="space-y-1">
-                                <Label className="text-sm font-semibold text-muted-foreground">Type/Model</Label>
-                                <p className="text-base font-medium">{item.specsBrand}</p>
-                              </div>
-                            )}
-
-                            {item.notes && (
-                              <div className="space-y-1">
-                                <Label className="text-sm font-semibold text-muted-foreground">Extra Info</Label>
-                                <p className="text-base leading-relaxed text-muted-foreground">{item.notes}</p>
-                              </div>
-                            )}
-
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              ) : (
-                // Original desktop grid layout for managers
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
-                  {allRequests
-                    .sort((a, b) => {
-                      const orderA = a.itemOrder ?? a.createdAt;
-                      const orderB = b.itemOrder ?? b.createdAt;
-                      return orderA - orderB;
-                    })
-                    .map((item, idx) => {
-                      const isPending = item.status === "pending";
-                      const displayNumber = item.itemOrder ?? idx + 1;
-                      const isSelected = selectedItemsForAction.has(item._id);
-                      return (
-                    <div
-                      key={item._id}
-                      className={cn(
-                        "p-3 sm:p-4 lg:p-5 border-2 rounded-lg sm:rounded-xl bg-card shadow-sm hover:shadow-md transition-all duration-200 space-y-3 sm:space-y-4 flex flex-col h-full w-full min-w-0",
-                        isPending && "border-dashed",
-                        isSelected && "ring-2 ring-green-500 border-green-500"
-                      )}
-                    >
-                      {/* Item Header */}
-                      <div className="flex items-start justify-between gap-2 sm:gap-3 pb-2 sm:pb-3 border-b">
-                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 flex-1">
-                          {isPending && (
+                    return (
+                      <div
+                        key={item._id}
+                        className={cn(
+                          "p-4 rounded-lg border-2 shadow-sm relative min-h-[200px] flex flex-col",
+                          item.status === "approved" && "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800",
+                          item.status === "rejected" && "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800",
+                          !["approved", "rejected"].includes(item.status) && "bg-card/50",
+                          isSelected && "border-green-500 shadow-md ring-2 ring-green-200"
+                        )}
+                      >
+                        {/* Select button - top right corner */}
+                        {isPending && (
+                          <div className="absolute top-2 right-2 z-10">
                             <Checkbox
-                              checked={selectedItemsForAction.has(item._id)}
-                              onCheckedChange={() => toggleItemSelection(item._id)}
-                              className="flex-shrink-0"
+                              checked={isSelected}
+                              onCheckedChange={(checked) => toggleItemSelection(item._id)}
+                              className="h-4 w-4"
                             />
+                          </div>
+                        )}
+
+                        <div className="flex flex-col flex-1">
+                          <div className="flex items-start justify-between gap-2 mb-3 pr-8">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge variant="outline" className="text-xs px-2 py-1 h-6 min-w-[28px] flex items-center justify-center flex-shrink-0">
+                                  {displayNumber}
+                                </Badge>
+                                <div className="flex-1 min-w-0">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedItemName(item.itemName);
+                                    }}
+                                    className="text-sm font-medium text-foreground hover:text-primary hover:bg-muted/50 rounded-md px-2 py-1 -mx-2 -my-1 transition-colors cursor-pointer text-left truncate"
+                                  >
+                                    {item.itemName}
+                                  </button>
+                                </div>
+                              </div>
+                              {item.description && (
+                                <div className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                                  {item.description}
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span><span className="font-medium">Qty:</span> {item.quantity} {item.unit}</span>
+                                {item.specsBrand && (
+                                  <span className="text-primary truncate ml-2">{item.specsBrand}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <CompactImageGallery
+                                images={itemPhotos}
+                                maxDisplay={1}
+                                size="md"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Status and badges */}
+                          <div className="mt-auto pt-2 border-t">
+                            <div className="flex items-center justify-between">
+                              {/* Urgent badge - Left side */}
+                              <div className="flex items-center">
+                                {item.isUrgent && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    <AlertCircle className="h-3 w-3 mr-1" />
+                                    Urgent
+                                  </Badge>
+                                )}
+                              </div>
+                              {/* Status badge - Right side */}
+                              <div className="flex items-center">
+                                {(item.status === 'approved' || item.status === 'cc_approved') && (
+                                  <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white text-xs">
+                                    ✓ Approved
+                                  </Badge>
+                                )}
+                                {item.status === 'rejected' && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    ✗ Rejected
+                                  </Badge>
+                                )}
+                                {item.status !== 'approved' && item.status !== 'rejected' && item.status !== 'cc_approved' && getStatusBadge(item.status)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Individual Item Actions */}
+                          {isManager && isPending && (
+                            <div className="flex gap-1 mt-3 pt-2 border-t">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowItemDirectPOConfirm(item._id)}
+                                disabled={isLoading}
+                                className="flex-1 text-xs h-7 px-1 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300"
+                              >
+                                <ShoppingCart className="h-3 w-3 mr-1" />
+                                Direct PO
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setShowItemRejectionInput(item._id)}
+                                disabled={isLoading}
+                                className="flex-1 text-xs h-7 px-1"
+                              >
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Reject
+                              </Button>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => setShowItemApproveConfirm(item._id)}
+                                disabled={isLoading}
+                                className="flex-1 text-xs h-7 px-1 bg-green-600 hover:bg-green-700"
+                              >
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Approve
+                              </Button>
+                            </div>
                           )}
-                          <Badge
-                            variant="outline"
-                            className="text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 font-semibold flex-shrink-0"
-                          >
-                            Item {displayNumber}
-                          </Badge>
-                          {item.isUrgent && (
-                            <Badge variant="destructive" className="text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 flex-shrink-0">
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              Urgent
-                            </Badge>
-                          )}
-                          <div className="flex-shrink-0">
-                            {getStatusBadge(item.status)}
-                          </div>
-                        </div>
-                      </div>
 
-                      {/* Item Content - Better Layout with flex-grow */}
-                      <div className="space-y-2 sm:space-y-3 flex-1 flex flex-col min-w-0">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-                          <div className="space-y-1 min-w-0">
-                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Item Name</Label>
-                            <button
-                              onClick={() => setSelectedItemName(item.itemName)}
-                              className="font-semibold text-sm break-words line-clamp-2 text-foreground hover:text-primary hover:bg-muted/50 rounded-md px-2 py-1 -mx-2 -my-1 transition-colors cursor-pointer text-left"
-                            >
-                              {item.itemName}
-                            </button>
-                          </div>
-                          <div className="space-y-1 min-w-0">
-                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Quantity</Label>
-                            <p className="font-semibold text-sm break-words">
-                              {item.quantity} <span className="text-muted-foreground font-normal">{item.unit}</span>
-                            </p>
-                          </div>
-                        </div>
-
-                        {item.description && (
-                          <div className="space-y-1 flex-1 min-w-0">
-                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Description</Label>
-                            <p className="text-sm break-words whitespace-pre-wrap leading-relaxed line-clamp-3 sm:line-clamp-4">{item.description}</p>
-                          </div>
-                        )}
-
-                        {item.specsBrand && (
-                          <div className="space-y-1 min-w-0">
-                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Specs/Brand</Label>
-                            <p className="text-sm font-medium break-words line-clamp-2">{item.specsBrand}</p>
-                          </div>
-                        )}
-
-                        {item.notes && (
-                          <div className="space-y-1 min-w-0">
-                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Notes</Label>
-                            <p className="text-sm whitespace-pre-wrap break-words leading-relaxed text-muted-foreground line-clamp-2 sm:line-clamp-3">{item.notes}</p>
-                          </div>
-                        )}
-
-                      </div>
-
-                      {/* Per-item actions - Better Layout, Sticky to bottom */}
-                      {isManager && isPending && (
-                        <div className="pt-2 sm:pt-3 border-t mt-auto w-full">
-                          {showItemRejectionInput === item._id ? (
-                            <div className="space-y-2 w-full">
+                          {/* Rejection Reason Input for individual items */}
+                          {showItemRejectionInput === item._id && (
+                            <div className="mt-2">
                               <Textarea
                                 value={itemRejectionReasons[item._id] || ""}
                                 onChange={(e) =>
@@ -831,17 +1061,17 @@ export function RequestDetailsDialog({
                                 }
                                 placeholder="Enter rejection reason..."
                                 rows={2}
-                                className="text-xs w-full"
+                                className="text-xs"
                               />
-                              <div className="flex gap-2 flex-wrap w-full">
+                              <div className="flex gap-1 mt-1">
                                 <Button
                                   variant="destructive"
                                   size="sm"
                                   onClick={() => handleItemReject(item._id)}
                                   disabled={isLoading || !itemRejectionReasons[item._id]?.trim()}
-                                  className="text-xs h-8 flex-1 min-w-[100px]"
+                                  className="text-xs h-6 px-2"
                                 >
-                                  <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                                  <XCircle className="h-3 w-3 mr-1" />
                                   Confirm
                                 </Button>
                                 <Button
@@ -850,59 +1080,25 @@ export function RequestDetailsDialog({
                                   onClick={() => {
                                     setShowItemRejectionInput(null);
                                     setItemRejectionReasons((prev) => {
-                                      const next = { ...prev };
+                                      const next: Record<string, string> = { ...prev };
                                       delete next[item._id];
                                       return next;
                                     });
                                   }}
                                   disabled={isLoading}
-                                  className="text-xs h-8"
+                                  className="text-xs h-6 px-2"
                                 >
                                   Cancel
                                 </Button>
                               </div>
                             </div>
-                          ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full">
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => handleItemApprove(item._id)}
-                                disabled={isLoading}
-                                className="text-xs h-8 sm:h-8 bg-green-600 hover:bg-green-700 w-full"
-                              >
-                                <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                                Approve
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleItemDirectPO(item._id)}
-                                disabled={isLoading}
-                                className="text-xs h-8 sm:h-8 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 w-full"
-                              >
-                                <ShoppingCart className="h-3.5 w-3.5 mr-1" />
-                                Direct PO
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => setShowItemRejectionInput(item._id)}
-                                disabled={isLoading}
-                                className="text-xs h-8 sm:h-8 w-full"
-                              >
-                                <XCircle className="h-3.5 w-3.5 mr-1" />
-                                Reject
-                              </Button>
-                            </div>
                           )}
                         </div>
-                      )}
+                        {/* First Row: Urgent (left) + Status (right) */}
                     </div>
-                      );
-                    })}
-                </div>
-              )
+                    );
+                  })}
+              </div>
             ) : (
               // Fallback to single item display if allRequests not loaded yet
               <div className="space-y-4">
@@ -914,7 +1110,7 @@ export function RequestDetailsDialog({
                         Urgent
                       </Badge>
                     )}
-                    {allItemsHaveSameStatus && getStatusBadge(request.status)}
+                    {(allItemsHaveSameStatus || overallStatus === "partially_processed") && getStatusBadge(overallStatus || request.status)}
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -990,7 +1186,31 @@ export function RequestDetailsDialog({
                     </p>
                   </div>
                 </div>
-                {request.rejectionReason && (
+                {/* Show rejection reasons for all rejected items */}
+                {allRequests && allRequests.filter(item => item.status === "rejected" && item.rejectionReason).length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-destructive">Rejection Reasons</Label>
+                    {allRequests
+                      .filter(item => item.status === "rejected" && item.rejectionReason)
+                      .map((item, index) => (
+                        <div key={item._id} className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md">
+                          <div className="flex items-start gap-2">
+                            <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-red-800 dark:text-red-300 mb-1">
+                                {item.itemName} ({item.quantity} {item.unit})
+                              </div>
+                              <div className="text-sm text-red-700 dark:text-red-400">
+                                {item.rejectionReason}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                {/* Fallback for single item rejection */}
+                {request.rejectionReason && (!allRequests || allRequests.filter(item => item.status === "rejected").length === 0) && (
                   <div>
                     <p className="text-sm">
                       <span className="text-muted-foreground">Rejection reason:</span>{" "}
@@ -1040,165 +1260,337 @@ export function RequestDetailsDialog({
             </>
           )}
 
-          {/* Manager Actions - Keep Original */}
+          {/* Manager Actions - Simplified and Systematic */}
           {(canApprove || canReject) && !isMobileLayout && (
             <>
               <Separator />
               <div className="space-y-4">
-                {/* Bulk Actions for Multiple Items */}
-                {hasMultiplePendingItems && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm font-semibold">
-                        Bulk Actions ({selectedItemsForAction.size > 0 ? `${selectedItemsForAction.size} selected` : `${pendingItems.length} pending items`})
-                      </Label>
-                      {pendingItems.length > 0 && (
-                        <div className="flex gap-2">
-                          {selectedItemsForAction.size === pendingItems.length ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={deselectAll}
-                              disabled={isLoading}
-                              className="text-xs h-7 px-2"
-                            >
-                              Deselect All
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={selectAllPending}
-                              disabled={isLoading}
-                              className="text-xs h-7 px-2"
-                            >
-                              Select All
-                            </Button>
-                          )}
+
+                {/* Main Action Buttons - Always Visible */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    onClick={() => setShowDirectPOConfirm(true)}
+                    disabled={isLoading}
+                    size="lg"
+                    variant="outline"
+                    className="flex-1 sm:w-1/5 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-950 font-semibold py-4"
+                  >
+                    <ShoppingCart className="h-5 w-5 mr-2" />
+                    {selectedItemsForAction.size > 0
+                      ? `Direct PO (${selectedItemsForAction.size})`
+                      : "Direct PO All"
+                    }
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setShowRejectionInput(true)}
+                    disabled={isLoading}
+                    size="lg"
+                    className="flex-1 sm:flex-[2] font-semibold py-4"
+                  >
+                    <XCircle className="h-5 w-5 mr-2" />
+                    {selectedItemsForAction.size > 0
+                      ? `Reject (${selectedItemsForAction.size})`
+                      : "Reject All"
+                    }
+                  </Button>
+                  <Button
+                    onClick={() => setShowApproveConfirm(true)}
+                    disabled={isLoading}
+                    size="lg"
+                    className="flex-1 sm:flex-[2] bg-green-600 hover:bg-green-700 text-white font-semibold py-4"
+                  >
+                    <CheckCircle className="h-5 w-5 mr-2" />
+                    {selectedItemsForAction.size > 0
+                      ? `Approve (${selectedItemsForAction.size})`
+                      : "Approve All"
+                    }
+                  </Button>
+                </div>
+
+                {/* Approval Confirmation */}
+                {showApproveConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="w-full max-w-md mx-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-xl">
+                      <div className="p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex-shrink-0 w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center">
+                            <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                              Confirm Approval
+                            </h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                              Approve {selectedItemsForAction.size > 0 ? selectedItemsForAction.size : 'all'} pending items?
+                            </p>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <Button
-                        onClick={handleApproveAll}
-                        disabled={isLoading || pendingItems.length === 0}
-                        className="w-full bg-green-600 hover:bg-green-700"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        <span className="truncate">
-                          Approve {selectedItemsForAction.size > 0 ? `(${selectedItemsForAction.size})` : `All`}
-                        </span>
-                      </Button>
-                      <Button
-                        onClick={handleDirectPOAll}
-                        disabled={isLoading || pendingItems.length === 0}
-                        className="w-full bg-blue-600 hover:bg-blue-700"
-                      >
-                        <ShoppingCart className="h-4 w-4 mr-2" />
-                        <span className="truncate">
-                          Direct PO {selectedItemsForAction.size > 0 ? `(${selectedItemsForAction.size})` : `All`}
-                        </span>
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={() => setShowRejectionInput(true)}
-                        disabled={isLoading || pendingItems.length === 0}
-                        className="w-full"
-                      >
-                        <XCircle className="h-4 w-4 mr-2" />
-                        <span className="truncate">
-                          Reject {selectedItemsForAction.size > 0 ? `(${selectedItemsForAction.size})` : `All`}
-                        </span>
-                      </Button>
+                        <div className="flex gap-3">
+                          <Button
+                            onClick={async () => {
+                              const itemsToProcess = selectedItemsForAction.size > 0
+                                ? Array.from(selectedItemsForAction)
+                                : pendingItems.map(item => item._id);
+
+                              // Keep dialog open, just close confirmation
+                              setShowApproveConfirm(false);
+                              setSelectedItemsForAction(new Set());
+
+                              try {
+                                await bulkUpdateStatus({
+                                  requestIds: itemsToProcess,
+                                  status: "approved",
+                                });
+                                toast.success(`${itemsToProcess.length} items approved`);
+                              } catch (error: any) {
+                                toast.error(error.message || "Failed to approve items");
+                              }
+                            }}
+                            disabled={isLoading}
+                            className="flex-1 bg-green-600 hover:bg-green-700"
+                          >
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Confirm
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowApproveConfirm(false)}
+                            disabled={isLoading}
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Single Item Actions or Additional Actions */}
-                {(!hasMultiplePendingItems || pendingItems.length === 0) && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex gap-2 flex-wrap">
-                      {canApprove && (
-                        <Button
-                          onClick={handleApprove}
-                          disabled={isLoading}
-                          className="flex-1 min-w-[120px]"
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Approve Request
-                        </Button>
-                      )}
-                      {canApprove && (
-                        <Button
-                          onClick={handleDirectPO}
-                          disabled={isLoading}
-                          variant="outline"
-                          className="flex-1 min-w-[120px] border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950"
-                        >
-                          <ShoppingCart className="h-4 w-4 mr-2" />
-                          Direct PO
-                        </Button>
-                      )}
-                      {canReject && (
-                        <Button
-                          variant="destructive"
-                          onClick={() => setShowRejectionInput(true)}
-                          disabled={isLoading}
-                          className="flex-1 min-w-[120px]"
-                        >
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Reject Request
-                        </Button>
-                      )}
+                {/* Direct PO Confirmation */}
+                {showDirectPOConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="w-full max-w-md mx-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-xl">
+                      <div className="p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-full flex items-center justify-center">
+                            <ShoppingCart className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                              Confirm Direct PO
+                            </h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                              Send {selectedItemsForAction.size > 0 ? selectedItemsForAction.size : 'all'} items directly to PO? This skips cost comparison.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <Button
+                            onClick={async () => {
+                              const itemsToProcess = selectedItemsForAction.size > 0
+                                ? Array.from(selectedItemsForAction)
+                                : pendingItems.map(item => item._id);
+
+                              // Keep dialog open, just close confirmation
+                              setShowDirectPOConfirm(false);
+                              setSelectedItemsForAction(new Set());
+
+                              try {
+                                await bulkUpdateStatus({
+                                  requestIds: itemsToProcess,
+                                  status: "direct_po",
+                                });
+                                toast.success(`${itemsToProcess.length} items sent to Direct PO`);
+                              } catch (error: any) {
+                                toast.error(error.message || "Failed to process Direct PO");
+                              }
+                            }}
+                            disabled={isLoading}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          >
+                            <ShoppingCart className="h-4 w-4 mr-2" />
+                            Confirm
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowDirectPOConfirm(false)}
+                            disabled={isLoading}
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                    {canMarkDelivery && (
-                      <Button
-                        onClick={handleMarkDelivery}
-                        disabled={isLoading}
-                        className="w-full"
-                      >
-                        <Package className="h-4 w-4 mr-2" />
-                        Mark as Delivered
-                      </Button>
-                    )}
                   </div>
                 )}
 
-                {/* Rejection Input */}
+                {/* Individual Item Approve Confirmation */}
+                {showItemApproveConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="w-full max-w-md mx-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-xl">
+                      <div className="p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex-shrink-0 w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center">
+                            <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                              Confirm Item Approval
+                            </h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                              Approve this individual item?
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <Button
+                            onClick={() => {
+                              if (showItemApproveConfirm) {
+                                handleItemApprove(showItemApproveConfirm);
+                                setShowItemApproveConfirm(null);
+                              }
+                            }}
+                            disabled={isLoading}
+                            className="flex-1 bg-green-600 hover:bg-green-700"
+                          >
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Confirm
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowItemApproveConfirm(null)}
+                            disabled={isLoading}
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Individual Item Direct PO Confirmation */}
+                {showItemDirectPOConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="w-full max-w-md mx-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-xl">
+                      <div className="p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-full flex items-center justify-center">
+                            <ShoppingCart className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                              Confirm Direct PO
+                            </h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                              Send this individual item directly to PO? This skips cost comparison.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <Button
+                            onClick={() => {
+                              if (showItemDirectPOConfirm) {
+                                handleItemDirectPO(showItemDirectPOConfirm);
+                                setShowItemDirectPOConfirm(null);
+                              }
+                            }}
+                            disabled={isLoading}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          >
+                            <ShoppingCart className="h-4 w-4 mr-2" />
+                            Confirm
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowItemDirectPOConfirm(null)}
+                            disabled={isLoading}
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Rejection Reason Input */}
                 {showRejectionInput && (
-                  <div className="space-y-2">
-                    <Label htmlFor="rejectionReason">
-                      Rejection Reason <span className="text-destructive">*</span>
-                    </Label>
-                    <Textarea
-                      id="rejectionReason"
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      placeholder="Enter reason for rejection..."
-                      rows={3}
-                    />
-                    <div className="flex gap-2 flex-wrap">
-                      <Button
-                        variant="destructive"
-                        onClick={hasMultiplePendingItems ? handleRejectAll : handleReject}
-                        disabled={isLoading || !rejectionReason.trim()}
-                        className="flex-1 min-w-[120px]"
-                      >
-                        <XCircle className="h-4 w-4 mr-2" />
-                        {hasMultiplePendingItems
-                          ? `Reject All (${pendingItems.length})`
-                          : "Confirm Rejection"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setShowRejectionInput(false);
-                          setRejectionReason("");
-                        }}
-                        disabled={isLoading}
-                      >
-                        Cancel
-                      </Button>
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="w-full max-w-md mx-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-xl">
+                      <div className="p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex-shrink-0 w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
+                            <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                              Confirm Rejection
+                            </h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                              Reject {selectedItemsForAction.size > 0 ? selectedItemsForAction.size : 'all'} pending items?
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mb-4">
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                            Rejection Reason <span className="text-red-500">*</span>
+                          </Label>
+                          <Textarea
+                            value={rejectionReason}
+                            onChange={(e) => setRejectionReason(e.target.value)}
+                            placeholder="Please explain why this request is being rejected..."
+                            rows={3}
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="flex gap-3">
+                          <Button
+                            variant="destructive"
+                            onClick={async () => {
+                              const itemsToProcess = selectedItemsForAction.size > 0
+                                ? Array.from(selectedItemsForAction)
+                                : pendingItems.map(item => item._id);
+
+                              // Keep dialog open, just close confirmation
+                              setShowRejectionInput(false);
+                              setRejectionReason("");
+                              setSelectedItemsForAction(new Set());
+
+                              try {
+                                await bulkUpdateStatus({
+                                  requestIds: itemsToProcess,
+                                  status: "rejected",
+                                  rejectionReason: rejectionReason.trim(),
+                                });
+                                toast.success(`${itemsToProcess.length} items rejected`);
+                              } catch (error: any) {
+                                toast.error(error.message || "Failed to reject items");
+                              }
+                            }}
+                            disabled={isLoading || !rejectionReason.trim()}
+                            className="flex-1"
+                          >
+                            <XCircle className="h-4 w-4 mr-2" />
+                            Confirm
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowRejectionInput(false);
+                              setRejectionReason("");
+                            }}
+                            disabled={isLoading}
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1249,6 +1641,7 @@ export function RequestDetailsDialog({
         siteId={selectedSiteId}
       />
     </Dialog>
+    </div>
   );
 }
 

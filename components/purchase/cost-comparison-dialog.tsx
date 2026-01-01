@@ -20,20 +20,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { X, Plus, Save, Send, AlertCircle, Package, CheckCircle } from "lucide-react";
+import { X, Plus, Save, Send, AlertCircle, Package, CheckCircle, Building } from "lucide-react";
 import { useUserRole } from "@/hooks/use-user-role";
 import { ROLES } from "@/lib/auth/roles";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { VendorCreationForm } from "./vendor-creation-form";
 import type { Id } from "@/convex/_generated/dataModel";
 
 interface CostComparisonDialogProps {
@@ -75,6 +70,21 @@ export function CostComparisonDialog({
   );
   const vendors = useQuery(api.vendors.getAllVendors);
   const inventoryItems = useQuery(api.inventory.getAllInventoryItems);
+
+  // Check if item exists in inventory
+  const itemInInventory = inventoryItems?.find(
+    (item) => item.itemName.toLowerCase() === request?.itemName.toLowerCase()
+  );
+
+  // Get smart vendor suggestions based on item in inventory
+  const suggestedVendors = vendors?.filter(vendor =>
+    itemInInventory?.vendorIds?.includes(vendor._id) || false
+  ) || [];
+
+  const otherVendors = vendors?.filter(vendor =>
+    !itemInInventory?.vendorIds?.includes(vendor._id) &&
+    !vendorQuotes.some(quote => quote.vendorId === vendor._id)
+  ) || [];
   const existingCC = useQuery(
     api.costComparisons.getCostComparisonByRequestId,
     requestId ? { requestId } : "skip"
@@ -82,11 +92,6 @@ export function CostComparisonDialog({
   const upsertCC = useMutation(api.costComparisons.upsertCostComparison);
   const submitCC = useMutation(api.costComparisons.submitCostComparison);
   const resubmitCC = useMutation(api.costComparisons.resubmitCostComparison);
-
-  // Check if item exists in inventory
-  const itemInInventory = inventoryItems?.find(
-    (item) => item.itemName.toLowerCase() === request?.itemName.toLowerCase()
-  );
 
   // Load existing cost comparison
   useEffect(() => {
@@ -234,13 +239,67 @@ export function CostComparisonDialog({
         </DialogHeader>
 
         <div className="space-y-3">
-          {/* Inventory Alert */}
+          {/* Item Information Card */}
+          {request && (
+            <div className="p-3 bg-muted/30 border rounded-lg space-y-2">
+              <h4 className="font-medium text-sm">Item Details</h4>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Item:</span>
+                  <p className="font-medium">{request.itemName}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Quantity:</span>
+                  <p className="font-medium">
+                    {request.quantity} {request.unit || itemInInventory?.unit || 'units'}
+                  </p>
+                </div>
+                {request.description && (
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Description:</span>
+                    <p className="text-sm mt-1">{request.description}</p>
+                  </div>
+                )}
+                {itemInInventory && (
+                  <div className="col-span-2 pt-2 border-t">
+                    <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300">
+                      <Package className="h-3.5 w-3.5" />
+                      <span>Item in inventory • Central stock: {itemInInventory.centralStock || 0} {itemInInventory.unit || 'units'}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Inventory Alert - Now more informative */}
           {itemInInventory && (
-            <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded text-xs">
-              <Package className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-              <span className="text-blue-700 dark:text-blue-300">
-                Item already in inventory - Direct Delivery available
-              </span>
+            <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <Package className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm text-blue-700 dark:text-blue-300 mb-1">
+                  Item Available in Inventory
+                </div>
+                <div className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
+                  <div>Central Stock: {itemInInventory.centralStock || 0} {itemInInventory.unit || 'units'}</div>
+                  {itemInInventory.vendorIds && itemInInventory.vendorIds.length > 0 && (
+                    <div>Associated Vendors: {itemInInventory.vendorIds.length}</div>
+                  )}
+                  <div className="flex items-center gap-1 mt-2">
+                    <input
+                      type="checkbox"
+                      id="directDelivery"
+                      checked={isDirectDelivery}
+                      onChange={(e) => setIsDirectDelivery(e.target.checked)}
+                      disabled={!canEdit || isSubmitted}
+                      className="h-3 w-3 rounded border-gray-300"
+                    />
+                    <label htmlFor="directDelivery" className="cursor-pointer text-xs">
+                      Use Direct Delivery (skip vendor quotes)
+                    </label>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -274,10 +333,23 @@ export function CostComparisonDialog({
           )}
 
           {/* Vendor Quotes */}
-          <div className="space-y-2">
-            <Label className="text-xs font-medium">
-              {isManagerReview ? "Select Final Vendor" : "Vendor Quotes"}
-            </Label>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium">
+                {isManagerReview ? "Select Final Vendor" : "Vendor Quotes"}
+              </Label>
+              {canEdit && !isManagerReview && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setVendorDialogOpen(true)}
+                  className="text-xs h-7"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Vendor Quote
+                </Button>
+              )}
+            </div>
             {vendorQuotes.length > 0 ? (
               isManagerReview ? (
                 // Manager view: Radio buttons to select final vendor
@@ -347,54 +419,157 @@ export function CostComparisonDialog({
               </p>
             )}
 
-            {/* Add Vendor Dialog - Always render for accessibility */}
+            {/* Enhanced Vendor Selection Dialog with Tabs */}
             <Dialog open={vendorDialogOpen && canEdit} onOpenChange={(open) => {
               if (canEdit) {
                 setVendorDialogOpen(open);
+                // Reset form when closing
+                if (!open) {
+                  setSelectedVendorId("");
+                  setUnitPrice("");
+                }
               }
             }}>
-              <DialogContent className="sm:max-w-md">
+              <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden">
                 <DialogHeader>
-                  <DialogTitle>Add Vendor</DialogTitle>
+                  <DialogTitle>Add Vendor Quote</DialogTitle>
+                  <DialogDescription>
+                    Select an existing vendor or create a new one for this item quote.
+                  </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Vendor</Label>
-                    <Select
-                      value={selectedVendorId}
-                      onValueChange={(value) => setSelectedVendorId(value as Id<"vendors">)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select vendor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {vendors
-                          ?.filter((v) => !vendorQuotes.some((q) => q.vendorId === v._id))
-                          .map((vendor) => (
-                            <SelectItem key={vendor._id} value={vendor._id}>
-                              {vendor.companyName}
-                            </SelectItem>
+
+                <Tabs defaultValue="existing" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="existing" className="flex items-center gap-2">
+                      <Building className="h-4 w-4" />
+                      Select Vendor
+                    </TabsTrigger>
+                    <TabsTrigger value="create" className="flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      Create Vendor
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="existing" className="space-y-4 mt-4">
+                    <div className="space-y-4 max-h-96 overflow-y-auto">
+                      {/* Smart Vendor Suggestions */}
+                      {suggestedVendors.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <Label className="text-sm font-medium text-green-700 dark:text-green-400">
+                              Suggested Vendors (supplied this item before)
+                            </Label>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2">
+                            {suggestedVendors.map((vendor) => (
+                              <button
+                                key={vendor._id}
+                                onClick={() => setSelectedVendorId(vendor._id)}
+                                className={`p-3 text-left border rounded-lg hover:bg-muted/50 transition-colors ${
+                                  selectedVendorId === vendor._id ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : ''
+                                }`}
+                              >
+                                <div className="font-medium text-sm">{vendor.companyName}</div>
+                                <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                                  <span>{vendor.email}</span>
+                                  {vendor.phone && <span>• {vendor.phone}</span>}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Other Vendors */}
+                      <div className="space-y-3">
+                        <Label className="text-sm font-medium">
+                          {suggestedVendors.length > 0 ? 'Other Available Vendors' : 'Available Vendors'}
+                        </Label>
+                        <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">
+                          {otherVendors.map((vendor) => (
+                            <button
+                              key={vendor._id}
+                              onClick={() => setSelectedVendorId(vendor._id)}
+                              className={`p-3 text-left border rounded-lg hover:bg-muted/50 transition-colors ${
+                                selectedVendorId === vendor._id ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : ''
+                              }`}
+                            >
+                              <div className="font-medium text-sm">{vendor.companyName}</div>
+                              <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                                <span>{vendor.email}</span>
+                                {vendor.phone && <span>• {vendor.phone}</span>}
+                              </div>
+                            </button>
                           ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Unit Price (₹)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={unitPrice}
-                      onChange={(e) => setUnitPrice(e.target.value)}
-                      placeholder="0.00"
+                          {otherVendors.length === 0 && suggestedVendors.length === 0 && (
+                            <div className="text-center py-8 text-muted-foreground">
+                              <Building className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                              <div className="text-sm">No vendors available</div>
+                              <div className="text-xs mt-1">Create a new vendor to add quotes</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Price Input for selected vendor */}
+                    {selectedVendorId && (
+                      <div className="space-y-3 border-t pt-4">
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Unit Price (₹)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={unitPrice}
+                            onChange={(e) => setUnitPrice(e.target.value)}
+                            placeholder="0.00"
+                            className="text-sm"
+                          />
+                          {request && unitPrice && (
+                            <div className="text-xs text-muted-foreground flex items-center gap-2">
+                              <span>Total: ₹{(parseFloat(unitPrice) * request.quantity).toFixed(2)}</span>
+                              <span>•</span>
+                              <span>Unit: {request.unit || itemInInventory?.unit || 'units'}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="create" className="mt-4">
+                    <VendorCreationForm
+                      onVendorCreated={(vendorId) => {
+                        setSelectedVendorId(vendorId);
+                        toast.success("Vendor created! Now add the price.");
+                        // Switch back to existing tab
+                        const tabTrigger = document.querySelector('[value="existing"]') as HTMLElement;
+                        if (tabTrigger) tabTrigger.click();
+                      }}
+                      onCancel={() => {
+                        // Switch back to existing tab
+                        const tabTrigger = document.querySelector('[value="existing"]') as HTMLElement;
+                        if (tabTrigger) tabTrigger.click();
+                      }}
+                      itemName={request?.itemName}
                     />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setVendorDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleAddVendor}>Add</Button>
-                  </div>
+                  </TabsContent>
+                </Tabs>
+
+                {/* Action buttons */}
+                <div className="flex justify-end gap-2 pt-4 border-t">
+                  <Button variant="outline" onClick={() => setVendorDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAddVendor}
+                    disabled={!selectedVendorId || !unitPrice}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Quote
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>

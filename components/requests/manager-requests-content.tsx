@@ -30,13 +30,14 @@ type RequestStatus =
   | "cc_approved"
   | "ready_for_po"
   | "delivery_stage"
-  | "delivered";
+  | "delivered"
+  | "partially_processed";
 
 export function ManagerRequestsContent() {
   const [selectedRequestId, setSelectedRequestId] = useState<Id<"requests"> | null>(null);
   const [ccRequestId, setCCRequestId] = useState<Id<"requests"> | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("pending");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
 
@@ -55,7 +56,13 @@ export function ManagerRequestsContent() {
             matchesCategory = request.status === "draft";
             break;
           case "pending":
-            matchesCategory = ["pending", "ready_for_cc", "cc_pending"].includes(request.status);
+            matchesCategory = ["pending", "ready_for_cc", "cc_pending", "partially_processed"].includes(request.status);
+            break;
+          case "site_engineer":
+            matchesCategory = request.creator?.role === "site_engineer";
+            break;
+          case "purchases":
+            matchesCategory = ["cc_pending", "cc_approved", "ready_for_po", "delivery_stage", "delivered"].includes(request.status);
             break;
           case "history":
             matchesCategory = !["draft", "pending", "ready_for_cc", "cc_pending"].includes(request.status);
@@ -101,9 +108,11 @@ export function ManagerRequestsContent() {
     // Calculate grouped counts
     const groupedCounts = {
       ...counts,
-      pending_group: (counts.pending || 0) + (counts.ready_for_cc || 0) + (counts.cc_pending || 0),
+      pending_group: (counts.pending || 0) + (counts.ready_for_cc || 0) + (counts.cc_pending || 0) + (counts.partially_processed || 0),
       approved_group: (counts.approved || 0) + (counts.cc_approved || 0) + (counts.ready_for_po || 0),
       rejected_group: (counts.rejected || 0) + (counts.cc_rejected || 0),
+      site_engineer_group: allRequests?.filter(r => r.creator?.role === "site_engineer").length || 0,
+      purchases_group: (counts.cc_pending || 0) + (counts.cc_approved || 0) + (counts.ready_for_po || 0) + (counts.delivery_stage || 0) + (counts.delivered || 0),
     };
 
     return groupedCounts;
@@ -119,6 +128,7 @@ export function ManagerRequestsContent() {
   const detailedStatusOptions = [
     { value: "draft", label: "Draft", count: getStatusCount("draft") },
     { value: "pending", label: "Pending", count: getStatusCount("pending") },
+    { value: "partially_processed", label: "Partially Processed", count: getStatusCount("partially_processed") },
     { value: "approved", label: "Approved", count: getStatusCount("approved") },
     { value: "ready_for_cc", label: "Ready for CC", count: getStatusCount("ready_for_cc") },
     { value: "cc_pending", label: "CC Pending", count: getStatusCount("cc_pending") },
@@ -157,6 +167,8 @@ export function ManagerRequestsContent() {
                       <SelectItem value="all">All Categories</SelectItem>
                       <SelectItem value="draft">Draft</SelectItem>
                       <SelectItem value="pending">Pending Requests</SelectItem>
+                      <SelectItem value="site_engineer">Site Engineer</SelectItem>
+                      <SelectItem value="purchases">Purchases</SelectItem>
                       <SelectItem value="history">History</SelectItem>
                     </SelectContent>
                   </Select>

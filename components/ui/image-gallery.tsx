@@ -210,7 +210,7 @@ export function CompactImageGallery({
             {/* Notification-style badge for additional images */}
             {images.length > maxDisplay && index === maxDisplay - 1 && (
               <div className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-white shadow-sm">
-                +1
+                +{images.length - maxDisplay}
               </div>
             )}
           </button>

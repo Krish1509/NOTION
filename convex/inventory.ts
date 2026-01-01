@@ -298,6 +298,52 @@ export const updateInventoryItem = mutation({
 });
 
 /**
+ * Link a vendor to an inventory item
+ * Used when creating vendors from cost comparison to establish relationships
+ */
+export const linkVendorToItem = mutation({
+  args: {
+    itemName: v.string(),
+    vendorId: v.id("vendors"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUser(ctx);
+
+    // Check if user is a Purchase Officer
+    if (currentUser.role !== "purchase_officer") {
+      throw new Error("Unauthorized: Only Purchase Officers can link vendors to items");
+    }
+
+    // Find the inventory item by name
+    const item = await ctx.db
+      .query("inventory")
+      .withIndex("by_item_name", (q) => q.eq("itemName", args.itemName))
+      .first();
+
+    if (!item || !item.isActive) {
+      throw new Error("Inventory item not found");
+    }
+
+    // Validate vendor exists
+    const vendor = await ctx.db.get(args.vendorId);
+    if (!vendor || !vendor.isActive) {
+      throw new Error("Vendor not found");
+    }
+
+    // Add vendor to the item's vendor list
+    const currentVendorIds = item.vendorIds || [];
+    if (!currentVendorIds.includes(args.vendorId)) {
+      await ctx.db.patch(item._id, {
+        vendorIds: [...currentVendorIds, args.vendorId],
+        updatedAt: Date.now(),
+      });
+    }
+
+    return item._id;
+  },
+});
+
+/**
  * Delete inventory item (Purchase Officer only)
  * Also deletes associated images from R2
  */

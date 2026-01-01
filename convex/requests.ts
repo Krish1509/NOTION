@@ -157,6 +157,7 @@ export const getUserRequests = query({
             ? {
                 _id: creator._id,
                 fullName: creator.fullName,
+                role: creator.role,
               }
             : null,
           approver: approver
@@ -223,6 +224,7 @@ export const getRequestsReadyForCC = query({
             ? {
                 _id: creator._id,
                 fullName: creator.fullName,
+                role: creator.role,
               }
             : null,
           approver: approver
@@ -313,6 +315,7 @@ export const getPurchaseRequestsByStatus = query({
             ? {
                 _id: creator._id,
                 fullName: creator.fullName,
+                role: creator.role,
               }
             : null,
           approver: approver
@@ -379,6 +382,7 @@ export const getAllRequests = query({
             ? {
                 _id: creator._id,
                 fullName: creator.fullName,
+                role: creator.role,
               }
             : null,
           approver: approver

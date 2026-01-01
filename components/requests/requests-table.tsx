@@ -46,7 +46,8 @@ type RequestStatus =
   | "cc_approved"
   | "ready_for_po"
   | "delivery_stage"
-  | "delivered";
+  | "delivered"
+  | "partially_processed";
 
 // Enhanced status color mapping for view buttons with better visuals
 const getStatusButtonStyles = (status: RequestStatus) => {
@@ -73,6 +74,8 @@ const getStatusButtonStyles = (status: RequestStatus) => {
       return `${baseClasses} border-rose-300 text-rose-800 bg-gradient-to-r from-rose-50 to-rose-100 hover:from-rose-100 hover:to-rose-200 hover:border-rose-400 dark:border-rose-600 dark:text-rose-300 dark:from-rose-900 dark:to-rose-800 dark:hover:from-rose-800 dark:hover:to-rose-700`;
     case "delivered":
       return `${baseClasses} border-blue-300 text-blue-800 bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 hover:border-blue-400 dark:border-blue-600 dark:text-blue-300 dark:from-blue-900 dark:to-blue-800 dark:hover:from-blue-800 dark:hover:to-blue-700`;
+    case "partially_processed":
+      return `${baseClasses} border-purple-300 text-purple-800 bg-gradient-to-r from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 hover:border-purple-400 dark:border-purple-600 dark:text-purple-300 dark:from-purple-900 dark:to-purple-800 dark:hover:from-purple-800 dark:hover:to-purple-700`;
     default:
       return `${baseClasses} border-blue-300 text-blue-800 bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 hover:border-blue-400 dark:border-blue-600 dark:text-blue-300 dark:from-blue-900 dark:to-blue-800 dark:hover:from-blue-800 dark:hover:to-blue-700`;
   }
@@ -94,6 +97,10 @@ interface Request {
     imageUrl: string;
     imageKey: string;
   };
+  photos?: Array<{
+    imageUrl: string;
+    imageKey: string;
+  }>;
   itemOrder?: number; // Order of item within the request (1, 2, 3...)
   status: RequestStatus;
   approvedBy?: Id<"users">;
@@ -112,6 +119,7 @@ interface Request {
   creator?: {
     _id: Id<"users">;
     fullName: string;
+    role: string;
   } | null;
   approver?: {
     _id: Id<"users">;
@@ -147,10 +155,60 @@ export function RequestsTable({
   const [selectedItemName, setSelectedItemName] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<Id<"sites"> | null>(null);
 
+  // Helper function to collect photos from both photo and photos fields
+  const getItemPhotos = (item: Request) => {
+    const photos: Array<{ imageUrl: string; imageKey: string }> = [];
+
+    // Check for new photos array first
+    if (item.photos && item.photos.length > 0) {
+      item.photos.forEach((photo) => {
+        photos.push({
+          imageUrl: photo.imageUrl,
+          imageKey: photo.imageKey,
+        });
+      });
+    }
+    // Fallback to legacy photo field
+    else if (item.photo) {
+      photos.push({
+        imageUrl: item.photo.imageUrl,
+        imageKey: item.photo.imageKey,
+      });
+    }
+
+    return photos;
+  };
+
   const handleOpenInMap = (address: string) => {
     const encodedAddress = encodeURIComponent(address);
     const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
     window.open(mapUrl, '_blank');
+  };
+
+  // Get all photos from all items in a request group
+  const getRequestPhotos = (items: Request[]) => {
+    const photos: Array<{ imageUrl: string; imageKey: string }> = [];
+
+    items.forEach((item) => {
+      // Check for new photos array first
+      if (item.photos && item.photos.length > 0) {
+        item.photos.forEach((photo) => {
+          photos.push({
+            imageUrl: photo.imageUrl,
+            imageKey: photo.imageKey,
+          });
+        });
+      }
+      // Fallback to legacy photo field
+      else if (item.photo) {
+        photos.push({
+          imageUrl: item.photo.imageUrl,
+          imageKey: item.photo.imageKey,
+        });
+      }
+    });
+
+    return photos;
   };
 
   if (!requests) {
@@ -262,6 +320,12 @@ export function RequestsTable({
             Delivered
           </Badge>
         );
+      case "partially_processed":
+        return (
+          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800">
+            Partially Processed
+          </Badge>
+        );
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -299,6 +363,28 @@ export function RequestsTable({
           ? items.every((item) => item.status === items[0].status)
           : true;
 
+        // Determine overall request status
+        const getOverallStatus = () => {
+          if (allItemsHaveSameStatus) {
+            return items[0].status;
+          }
+
+          // Check if we have mixed processed statuses (not pending/draft)
+          const processedStatuses = items.filter(item =>
+            !["pending", "draft"].includes(item.status)
+          );
+
+          if (processedStatuses.length > 0 && processedStatuses.length < items.length) {
+            // Some items processed, some still pending - partially processed
+            return "partially_processed";
+          }
+
+          // All items are pending/draft or truly mixed
+          return null;
+        };
+
+        const overallStatus = getOverallStatus();
+
         return (
           <div
             key={requestNumber}
@@ -314,9 +400,9 @@ export function RequestsTable({
                   <span className="font-mono text-xs font-semibold text-primary flex-shrink-0">
                     #{requestNumber}
                   </span>
-                  {allItemsHaveSameStatus && (
+                  {(allItemsHaveSameStatus || overallStatus === "partially_processed") && (
                     <div className="flex-shrink-0">
-                      {getStatusBadge(firstItem.status)}
+                      {getStatusBadge(overallStatus || firstItem.status)}
                     </div>
                   )}
                   {urgentCount > 0 && (
@@ -433,7 +519,7 @@ export function RequestsTable({
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <CompactImageGallery
-                          images={item.photo ? [{ imageUrl: item.photo.imageUrl, imageKey: item.photo.imageKey }] : []}
+                          images={getItemPhotos(item)}
                           maxDisplay={1}
                           size="md"
                         />
@@ -503,7 +589,7 @@ export function RequestsTable({
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <CompactImageGallery
-                        images={items[0].photo ? [{ imageUrl: items[0].photo.imageUrl, imageKey: items[0].photo.imageKey }] : []}
+                        images={getItemPhotos(items[0])}
                         maxDisplay={1}
                         size="md"
                       />
@@ -580,6 +666,22 @@ export function RequestsTable({
                     )}
                   </div>
                 )}
+                {/* Group CC and View buttons together */}
+                <div className="flex gap-0.5">
+                  {firstItem.status === "cc_pending" && onOpenCC && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenCC(firstItem._id);
+                      }}
+                      className="h-6 sm:h-7 px-1.5 sm:px-2 text-xs"
+                    >
+                      <FileText className="h-3 w-3 mr-1" />
+                      CC
+                    </Button>
+                )}
                 {onViewDetails && (
                   <Button
                     variant="ghost"
@@ -590,6 +692,7 @@ export function RequestsTable({
                     <Eye className="h-3 sm:h-3.5 w-3 sm:w-3.5" />
                   </Button>
                 )}
+                </div>
               </div>
             </div>
           </div>
@@ -636,6 +739,28 @@ export function RequestsTable({
                 const allItemsHaveSameStatus = items.length > 0
                   ? items.every((item) => item.status === items[0].status)
                   : true;
+
+                // Determine overall request status
+                const getOverallStatus = () => {
+                  if (allItemsHaveSameStatus) {
+                    return items[0].status;
+                  }
+
+                  // Check if we have mixed processed statuses (not pending/draft)
+                  const processedStatuses = items.filter(item =>
+                    !["pending", "draft"].includes(item.status)
+                  );
+
+                  if (processedStatuses.length > 0 && processedStatuses.length < items.length) {
+                    // Some items processed, some still pending - partially processed
+                    return "partially_processed";
+                  }
+
+                  // All items are pending/draft or truly mixed
+                  return null;
+                };
+
+                const overallStatus = getOverallStatus();
                 
                 return (
                   <Fragment key={requestNumber}>
@@ -749,7 +874,7 @@ export function RequestsTable({
                                       </div>
                                       <div className="flex-shrink-0">
                                         <CompactImageGallery
-                                          images={item.photo ? [{ imageUrl: item.photo.imageUrl, imageKey: item.photo.imageKey }] : []}
+                                          images={getItemPhotos(item)}
                                           maxDisplay={1}
                                           size="sm"
                                         />
@@ -793,7 +918,7 @@ export function RequestsTable({
                                 </div>
                                 <div className="flex-shrink-0">
                                   <CompactImageGallery
-                                    images={items[0].photo ? [{ imageUrl: items[0].photo.imageUrl, imageKey: items[0].photo.imageKey }] : []}
+                                    images={getItemPhotos(items[0])}
                                     maxDisplay={1}
                                     size="sm"
                                   />
@@ -803,7 +928,12 @@ export function RequestsTable({
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>{allItemsHaveSameStatus ? getStatusBadge(firstItem.status) : null}</TableCell>
+                      <TableCell>
+                        {(allItemsHaveSameStatus || overallStatus === "partially_processed")
+                          ? getStatusBadge(overallStatus || firstItem.status)
+                          : null
+                        }
+                      </TableCell>
                       <TableCell className="hidden lg:table-cell">
                         <div className="flex gap-2 flex-wrap">
                           {urgentCount > 0 && (
@@ -884,8 +1014,8 @@ export function RequestsTable({
                                 )}
                               </>
                             )}
-                            {/* CC button for cost comparison statuses */}
-                            {(firstItem.status === "cc_pending" || firstItem.status === "ready_for_cc") && onOpenCC && (
+                            {/* CC button for cost comparison statuses - Only show when CC is actually pending (created by purchase) */}
+                            {firstItem.status === "cc_pending" && onOpenCC && (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -908,7 +1038,7 @@ export function RequestsTable({
                               }}
                               className={getStatusButtonStyles(firstItem.status)}
                             >
-                              <Eye className="h-4 w-4 mr-2 text-current" />
+                              <Eye className="h-4 w-4 mr-2 text-inherit" />
                               {showCreator && firstItem.status === "pending" ? "Review" : "View"}
                             </Button>
                           </div>
