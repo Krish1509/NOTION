@@ -34,7 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Plus, Save, Send, AlertCircle, Package, CheckCircle, Building, Info, ExternalLink } from "lucide-react";
+import { Plus, Save, Send, AlertCircle, Package, CheckCircle, Building, Info, ExternalLink, Mail, Phone, Hash, MapPin } from "lucide-react";
 import { useUserRole } from "@/hooks/use-user-role";
 import { ROLES } from "@/lib/auth/roles";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -54,6 +54,8 @@ interface CostComparisonDialogProps {
 interface VendorQuote {
   vendorId: Id<"vendors">;
   unitPrice: number;
+  amount?: number;
+  unit?: string;
 }
 
 // Common unit suggestions for autocomplete
@@ -102,8 +104,18 @@ export function CostComparisonDialog({
   const [imageSliderImages, setImageSliderImages] = useState<Array<{imageUrl: string; imageKey: string}>>([]);
   const [imageSliderItemName, setImageSliderItemName] = useState("");
   const [imageSliderInitialIndex, setImageSliderInitialIndex] = useState(0);
-  const [showDirectDeliveryConfirm, setShowDirectDeliveryConfirm] = useState(false);
   const [isCreatingDirectPO, setIsCreatingDirectPO] = useState(false);
+  const [quoteAmount, setQuoteAmount] = useState("1");
+  const [quoteUnit, setQuoteUnit] = useState("");
+  const [showVendorDetails, setShowVendorDetails] = useState<string | null>(null);
+  const [showDirectDeliveryConfirm, setShowDirectDeliveryConfirm] = useState(false);
+  const [showCreateVendorDialog, setShowCreateVendorDialog] = useState(false);
+  const [vendorSearchTerm, setVendorSearchTerm] = useState("");
+  const [showVendorDropdown, setShowVendorDropdown] = useState(false);
+
+  // Unit suggestions state
+  const [showUnitSuggestions, setShowUnitSuggestions] = useState(false);
+  const [selectedUnitIndex, setSelectedUnitIndex] = useState(-1);
 
   // Item details edit state
   const [isEditingItem, setIsEditingItem] = useState(false);
@@ -113,9 +125,6 @@ export function CostComparisonDialog({
   const [editItemName, setEditItemName] = useState("");
   const [isUpdatingItem, setIsUpdatingItem] = useState(false);
 
-  // Unit autocomplete state
-  const [showUnitSuggestions, setShowUnitSuggestions] = useState(false);
-  const [selectedUnitIndex, setSelectedUnitIndex] = useState(-1);
 
   // Item name autocomplete state
   const [showItemNameSuggestions, setShowItemNameSuggestions] = useState(false);
@@ -218,11 +227,16 @@ export function CostComparisonDialog({
       return;
     }
 
+    const amount = parseFloat(quoteAmount) || 1;
+    const unit = quoteUnit.trim() || request?.unit || itemInInventory?.unit || "units";
+
     setVendorQuotes([
       ...vendorQuotes,
       {
         vendorId: selectedVendorId as Id<"vendors">,
         unitPrice: price,
+        amount: amount,
+        unit: unit,
       },
     ]);
 
@@ -447,6 +461,63 @@ export function CostComparisonDialog({
   const canEdit = existingCC?.status === "draft" || existingCC?.status === "cc_rejected" || !existingCC;
   const isSubmitted = existingCC?.status === "cc_pending";
   const isManagerReview = isManager && isSubmitted;
+
+  // Filter vendors based on search term
+  const filteredVendors = vendors?.filter(vendor =>
+    vendor.companyName.toLowerCase().includes(vendorSearchTerm.toLowerCase())
+  ) || [];
+
+  // Filter units based on input for quote
+  const getFilteredUnitSuggestionsForQuote = (input: string) => {
+    if (!input.trim()) return UNIT_SUGGESTIONS.slice(0, 8); // Show first 8 when empty
+    return UNIT_SUGGESTIONS.filter(unit =>
+      unit.toLowerCase().includes(input.toLowerCase())
+    ).slice(0, 8); // Limit to 8 suggestions
+  };
+
+  // Unit suggestion handlers for quote
+  const handleQuoteUnitInputChange = (value: string) => {
+    setQuoteUnit(value);
+    setShowUnitSuggestions(true);
+    setSelectedUnitIndex(-1); // Reset selection when typing
+  };
+
+  const handleQuoteUnitKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const suggestions = getFilteredUnitSuggestionsForQuote(quoteUnit);
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedUnitIndex(prev =>
+        prev < suggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedUnitIndex(prev => prev > 0 ? prev - 1 : -1);
+    } else if (e.key === 'Enter' && selectedUnitIndex >= 0) {
+      e.preventDefault();
+      setQuoteUnit(suggestions[selectedUnitIndex]);
+      setShowUnitSuggestions(false);
+      setSelectedUnitIndex(-1);
+    } else if (e.key === 'Escape') {
+      setShowUnitSuggestions(false);
+      setSelectedUnitIndex(-1);
+    }
+  };
+
+  const handleQuoteUnitSuggestionClick = (suggestion: string) => {
+    setQuoteUnit(suggestion);
+    setShowUnitSuggestions(false);
+    setSelectedUnitIndex(-1);
+  };
+
+  const handleQuoteUnitFocus = () => {
+    setShowUnitSuggestions(true);
+  };
+
+  const handleQuoteUnitBlur = () => {
+    // Delay hiding to allow click on suggestions
+    setTimeout(() => setShowUnitSuggestions(false), 150);
+  };
 
   const handleDirectDelivery = async () => {
     if (!request) return;
@@ -680,10 +751,9 @@ export function CostComparisonDialog({
                       </div>
                       {(itemInInventory.centralStock || 0) >= (request?.quantity || 0) && canEdit && !isSubmitted && (
                         <Button
-                          variant="outline"
                           size="sm"
                           onClick={() => setShowDirectDeliveryConfirm(true)}
-                          className="text-xs h-7"
+                          className="text-xs h-7 bg-blue-600 hover:bg-blue-700 text-white"
                         >
                           <Package className="h-3 w-3 mr-1" />
                           Direct PO
@@ -733,7 +803,7 @@ export function CostComparisonDialog({
                         }`}>
                           {(itemInInventory.centralStock || 0) >= (request?.quantity || 0)
                             ? 'Sufficient Stock'
-                            : 'Insufficient Stock'
+                            : 'Out of Stock'
                           }
                         </div>
                       </div>
@@ -776,75 +846,116 @@ export function CostComparisonDialog({
               )}
             </div>
             {vendorQuotes.length > 0 ? (
-              isManagerReview ? (
-                // Manager view: Radio buttons to select final vendor
-                <RadioGroup
-                  value={selectedFinalVendor}
-                  onValueChange={(value) => setSelectedFinalVendor(value as Id<"vendors">)}
-                  className="space-y-2"
-                >
-                  {vendorQuotes.map((quote) => (
-                    <div
-                      key={quote.vendorId}
-                      className={`p-3 border rounded-lg ${
-                        selectedFinalVendor === quote.vendorId
-                          ? "border-primary bg-primary/5"
-                          : "hover:bg-muted/50"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <RadioGroupItem
-                          value={quote.vendorId}
-                          id={`vendor-${quote.vendorId}`}
-                          className="mt-1"
-                        />
-                        <label
-                          htmlFor={`vendor-${quote.vendorId}`}
-                          className="flex-1 cursor-pointer"
-                        >
-                          <div>
-                            <p className="font-medium text-sm">{getVendorName(quote.vendorId)}</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              ₹{quote.unitPrice.toFixed(2)}/unit • ₹{calculateTotal(quote.unitPrice).toFixed(2)} total
-                            </p>
+              <div className="space-y-4">
+                {vendorQuotes.length === 1 && (
+                  <div className="text-xs text-amber-600 dark:text-amber-400 text-center py-2 px-3 bg-amber-50 dark:bg-amber-950/50 rounded border border-amber-200 dark:border-amber-800">
+                    <AlertCircle className="h-3 w-3 inline mr-1" />
+                    Add 1 more vendor to enable cost comparison submission
+                  </div>
+                )}
+                {isManagerReview ? (
+                  // Manager view: Radio buttons to select final vendor
+                  <RadioGroup
+                    value={selectedFinalVendor}
+                    onValueChange={(value) => setSelectedFinalVendor(value as Id<"vendors">)}
+                    className="space-y-3"
+                  >
+                    {vendorQuotes.map((quote) => (
+                      <div
+                        key={quote.vendorId}
+                        className={`p-4 border rounded-lg transition-colors ${
+                          selectedFinalVendor === quote.vendorId
+                            ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                            : "hover:bg-muted/50 border-border"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <RadioGroupItem
+                            value={quote.vendorId}
+                            id={`vendor-${quote.vendorId}`}
+                            className="mt-1"
+                          />
+                          <label
+                            htmlFor={`vendor-${quote.vendorId}`}
+                            className="flex-1 cursor-pointer"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <p className="font-semibold text-base">{getVendorName(quote.vendorId)}</p>
+                                <div className="text-right">
+                                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                    ₹{quote.unitPrice.toFixed(2)}/{quote.amount || 1}{quote.unit || 'units'}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                ) : (
+                  // Purchase Officer view: List with remove buttons
+                  <div className="border rounded-lg divide-y overflow-hidden">
+                    {vendorQuotes.map((quote, index) => (
+                      <div key={quote.vendorId} className="p-3 hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <p className="font-semibold text-base truncate">{getVendorName(quote.vendorId)}</p>
+                              <div className="text-right ml-4">
+                                <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                  ₹{quote.unitPrice.toFixed(2)}/{quote.amount || 1}{quote.unit || 'units'}
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                        </label>
+                          {canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveVendor(quote.vendorId)}
+                              className="h-8 w-8 p-0 shrink-0 ml-3 hover:bg-destructive/10 hover:text-destructive"
+                              title="Remove vendor"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Best Price Recommendation */}
+                {vendorQuotes.length >= 2 && (
+                  <div className="mt-4 p-3 bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm font-medium text-green-700 dark:text-green-300">Recommendation</span>
                     </div>
-                  ))}
-                </RadioGroup>
-              ) : (
-                // Purchase Officer view: List with remove buttons
-                <div className="border rounded-lg divide-y">
-                  {vendorQuotes.map((quote) => (
-                    <div key={quote.vendorId} className="p-2 flex items-center justify-between hover:bg-muted/50">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{getVendorName(quote.vendorId)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          ₹{quote.unitPrice.toFixed(2)}/unit • ₹{calculateTotal(quote.unitPrice).toFixed(2)} total
-                        </p>
-                      </div>
-                      {canEdit && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveVendor(quote.vendorId)}
-                          className="h-7 w-7 p-0 shrink-0"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )
+                    {(() => {
+                      const sortedQuotes = [...vendorQuotes].sort((a, b) => a.unitPrice - b.unitPrice);
+                      const bestQuote = sortedQuotes[0];
+                      const bestVendor = getVendorName(bestQuote.vendorId);
+                      return (
+                        <div className="text-sm text-green-600 dark:text-green-400">
+                          <p className="font-medium">Best Price: {bestVendor}</p>
+                          <p>₹{bestQuote.unitPrice.toFixed(2)}/{bestQuote.unit || 'unit'} • Save ₹{(sortedQuotes[1].unitPrice - bestQuote.unitPrice).toFixed(2)} compared to next best option</p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
             ) : (
-              <p className="text-xs text-muted-foreground text-center py-3">
-                No vendors added
-              </p>
+              <div className="text-xs text-muted-foreground text-center py-3 space-y-1">
+                <p>No vendors added</p>
+                <p>Add at least 2 vendors to enable cost comparison submission</p>
+              </div>
             )}
 
-            {/* Enhanced Vendor Selection Dialog with Tabs */}
+            {/* Simplified Vendor Selection Dialog */}
             <Dialog open={vendorDialogOpen && canEdit} onOpenChange={(open) => {
               if (canEdit) {
                 setVendorDialogOpen(open);
@@ -852,136 +963,217 @@ export function CostComparisonDialog({
                 if (!open) {
                   setSelectedVendorId("");
                   setUnitPrice("");
+                  setQuoteAmount("1");
+                  setQuoteUnit(request?.unit || itemInInventory?.unit || "");
+                  setShowVendorDetails(null);
+                  setShowCreateVendorDialog(false);
+                  setVendorSearchTerm("");
+                  setShowVendorDropdown(false);
+                  setShowUnitSuggestions(false);
+                  setSelectedUnitIndex(-1);
+                  setShowUnitSuggestions(false);
+                  setSelectedUnitIndex(-1);
                 }
               }
             }}>
-              <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden">
+              <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Add Vendor Quote</DialogTitle>
                   <DialogDescription>
-                    Select an existing vendor or create a new one for this item quote.
+                    Select vendor and enter quote details.
                   </DialogDescription>
                 </DialogHeader>
 
-                <Tabs defaultValue="existing" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="existing" className="flex items-center gap-2">
-                      <Building className="h-4 w-4" />
-                      Select Vendor
-                    </TabsTrigger>
-                    <TabsTrigger value="create" className="flex items-center gap-2">
-                      <Plus className="h-4 w-4" />
-                      Create Vendor
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="existing" className="space-y-4 mt-4">
-                    <div className="space-y-4 max-h-96 overflow-y-auto">
-                      {/* Smart Vendor Suggestions */}
-                      {suggestedVendors.length > 0 && (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <Label className="text-sm font-medium text-green-700 dark:text-green-400">
-                              Suggested Vendors (supplied this item before)
-                            </Label>
+                <div className="space-y-4">
+                  {/* Vendor Selection Row */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Vendor</Label>
+                    <div className="flex gap-2">
+                      <div className="flex-1 relative">
+                        <Input
+                          type="text"
+                          placeholder="Search and select vendor..."
+                          value={vendorSearchTerm}
+                          onChange={(e) => setVendorSearchTerm(e.target.value)}
+                          className="text-sm"
+                          onFocus={() => setShowVendorDropdown(true)}
+                          onBlur={() => setTimeout(() => setShowVendorDropdown(false), 200)}
+                        />
+                        {showVendorDropdown && (
+                          <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                            {filteredVendors.length > 0 ? (
+                              filteredVendors.map((vendor) => (
+                                <div
+                                  key={vendor._id}
+                                  onClick={() => {
+                                    setSelectedVendorId(vendor._id);
+                                    setVendorSearchTerm(vendor.companyName);
+                                    setShowVendorDropdown(false);
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between cursor-pointer"
+                                >
+                                  <span>{vendor.companyName}</span>
+                                  <div
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowVendorDetails(vendor._id);
+                                    }}
+                                    className="opacity-60 hover:opacity-100 p-1 rounded"
+                                  >
+                                    <Info className="h-3 w-3" />
+                                  </div>
+                                </div>
+                              ))
+                            ) : vendorSearchTerm.trim() ? (
+                              <div
+                                onClick={() => {
+                                  setShowCreateVendorDialog(true);
+                                  setShowVendorDropdown(false);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors cursor-pointer"
+                              >
+                                <Plus className="h-3 w-3 inline mr-1" />
+                                Create "{vendorSearchTerm}" as new vendor
+                              </div>
+                            ) : (
+                              <div className="px-3 py-2 text-sm text-muted-foreground">
+                                No vendors available
+                              </div>
+                            )}
                           </div>
-                          <div className="grid grid-cols-1 gap-2">
-                            {suggestedVendors.map((vendor) => (
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setVendorSearchTerm("");
+                          setSelectedVendorId("");
+                        }}
+                        disabled={!vendorSearchTerm}
+                        className="px-3 opacity-60 hover:opacity-100"
+                        title="Clear vendor selection"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                        {showVendorDropdown && (
+                          <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                            {filteredVendors.length > 0 ? (
+                              filteredVendors.map((vendor) => (
+                                <button
+                                  key={vendor._id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedVendorId(vendor._id);
+                                    setVendorSearchTerm(vendor.companyName);
+                                    setShowVendorDropdown(false);
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between"
+                                >
+                                  <span>{vendor.companyName}</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowVendorDetails(vendor._id);
+                                    }}
+                                    className="h-6 w-6 p-0 opacity-60 hover:opacity-100"
+                                  >
+                                    <Info className="h-3 w-3" />
+                                  </Button>
+                                </button>
+                              ))
+                            ) : vendorSearchTerm.trim() ? (
                               <button
-                                key={vendor._id}
-                                onClick={() => setSelectedVendorId(vendor._id)}
-                                className={`p-3 text-left border rounded-lg hover:bg-muted/50 transition-colors ${
-                                  selectedVendorId === vendor._id ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : ''
+                                type="button"
+                                onClick={() => {
+                                  setShowCreateVendorDialog(true);
+                                  setShowVendorDropdown(false);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
+                              >
+                                <Plus className="h-3 w-3 inline mr-1" />
+                                Create "{vendorSearchTerm}" as new vendor
+                              </button>
+                            ) : (
+                              <div className="px-3 py-2 text-sm text-muted-foreground">
+                                No vendors available
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowCreateVendorDialog(true)}
+                        className="px-3"
+                        title="Add new vendor"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Amount, Unit, Price Row */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Amount</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="any"
+                        value={quoteAmount}
+                        onChange={(e) => setQuoteAmount(e.target.value)}
+                        placeholder="1"
+                        className="text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Unit</Label>
+                      <div className="relative">
+                        <Input
+                          type="text"
+                          value={quoteUnit}
+                          onChange={(e) => handleQuoteUnitInputChange(e.target.value)}
+                          onKeyDown={handleQuoteUnitKeyDown}
+                          onFocus={handleQuoteUnitFocus}
+                          onBlur={handleQuoteUnitBlur}
+                          placeholder={request?.unit || itemInInventory?.unit || "kg"}
+                          className="text-sm"
+                        />
+                        {showUnitSuggestions && getFilteredUnitSuggestionsForQuote(quoteUnit).length > 0 && (
+                          <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                            {getFilteredUnitSuggestionsForQuote(quoteUnit).map((suggestion, index) => (
+                              <button
+                                key={suggestion}
+                                type="button"
+                                onClick={() => handleUnitSuggestionClick(suggestion)}
+                                className={`w-full px-3 py-1.5 text-left text-xs hover:bg-muted transition-colors ${
+                                  index === selectedUnitIndex ? 'bg-muted font-medium' : ''
                                 }`}
                               >
-                                <div className="font-medium text-sm">{vendor.companyName}</div>
-                                <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
-                                  <span>{vendor.email}</span>
-                                  {vendor.phone && <span>• {vendor.phone}</span>}
-                                </div>
+                                {suggestion}
                               </button>
                             ))}
                           </div>
-                        </div>
-                      )}
-
-                      {/* Other Vendors */}
-                      <div className="space-y-3">
-                        <Label className="text-sm font-medium">
-                          {suggestedVendors.length > 0 ? 'Other Available Vendors' : 'Available Vendors'}
-                        </Label>
-                        <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">
-                          {otherVendors.map((vendor) => (
-                            <button
-                              key={vendor._id}
-                              onClick={() => setSelectedVendorId(vendor._id)}
-                              className={`p-3 text-left border rounded-lg hover:bg-muted/50 transition-colors ${
-                                selectedVendorId === vendor._id ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : ''
-                              }`}
-                            >
-                              <div className="font-medium text-sm">{vendor.companyName}</div>
-                              <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
-                                <span>{vendor.email}</span>
-                                {vendor.phone && <span>• {vendor.phone}</span>}
-                              </div>
-                            </button>
-                          ))}
-                          {otherVendors.length === 0 && suggestedVendors.length === 0 && (
-                            <div className="text-center py-8 text-muted-foreground">
-                              <Building className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                              <div className="text-sm">No vendors available</div>
-                              <div className="text-xs mt-1">Create a new vendor to add quotes</div>
-                            </div>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
-
-                    {/* Price Input for selected vendor */}
-                    {selectedVendorId && (
-                      <div className="space-y-3 border-t pt-4">
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Unit Price (₹)</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={unitPrice}
-                            onChange={(e) => setUnitPrice(e.target.value)}
-                            placeholder="0.00"
-                            className="text-sm"
-                          />
-                          {request && unitPrice && (
-                            <div className="text-xs text-muted-foreground flex items-center gap-2">
-                              <span>Total: ₹{(parseFloat(unitPrice) * request.quantity).toFixed(2)}</span>
-                              <span>•</span>
-                              <span>Unit: {request.unit || itemInInventory?.unit || 'units'}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="create" className="mt-4">
-                    <VendorCreationForm
-                      onVendorCreated={(vendorId) => {
-                        setSelectedVendorId(vendorId);
-                        toast.success("Vendor created! Now add the price.");
-                        // Switch back to existing tab
-                        const tabTrigger = document.querySelector('[value="existing"]') as HTMLElement;
-                        if (tabTrigger) tabTrigger.click();
-                      }}
-                      onCancel={() => {
-                        // Switch back to existing tab
-                        const tabTrigger = document.querySelector('[value="existing"]') as HTMLElement;
-                        if (tabTrigger) tabTrigger.click();
-                      }}
-                      itemName={request?.itemName}
-                    />
-                  </TabsContent>
-                </Tabs>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Price (₹)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={unitPrice}
+                        onChange={(e) => setUnitPrice(e.target.value)}
+                        placeholder="0.00"
+                        className="text-lg font-semibold"
+                      />
+                    </div>
+                  </div>
 
                 {/* Action buttons */}
                 <div className="flex justify-end gap-2 pt-4 border-t">
@@ -996,6 +1188,33 @@ export function CostComparisonDialog({
                     Add Quote
                   </Button>
                 </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Create Vendor Dialog */}
+            <Dialog open={showCreateVendorDialog} onOpenChange={setShowCreateVendorDialog}>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Create New Vendor</DialogTitle>
+                  <DialogDescription>
+                    Add a new vendor for this quote.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <VendorCreationForm
+                  onVendorCreated={(vendorId) => {
+                    const newVendor = vendors?.find(v => v._id === vendorId);
+                    if (newVendor) {
+                      setSelectedVendorId(vendorId);
+                      setVendorSearchTerm(newVendor.companyName);
+                      setShowCreateVendorDialog(false);
+                      toast.success("Vendor created! You can now add the quote details.");
+                    }
+                  }}
+                  onCancel={() => setShowCreateVendorDialog(false)}
+                  itemName={request?.itemName}
+                  initialCompanyName={vendorSearchTerm}
+                />
               </DialogContent>
             </Dialog>
 
@@ -1239,7 +1458,7 @@ export function CostComparisonDialog({
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={isSaving || isSubmitting || vendorQuotes.length === 0}
+                disabled={isSaving || isSubmitting || vendorQuotes.length < 2}
                 size="sm"
               >
                 <Send className="h-3.5 w-3.5 mr-1.5" />
@@ -1310,6 +1529,76 @@ export function CostComparisonDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    {/* Vendor Details Dialog */}
+    <Dialog open={!!showVendorDetails} onOpenChange={() => setShowVendorDetails(null)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Building className="h-5 w-5 text-blue-600" />
+            Vendor Details
+          </DialogTitle>
+        </DialogHeader>
+
+        {showVendorDetails && (() => {
+          const vendor = vendors?.find(v => v._id === showVendorDetails);
+          if (!vendor) return null;
+
+          return (
+            <div className="space-y-4">
+              <div className="text-center pb-4 border-b">
+                <h3 className="font-semibold text-lg">{vendor.companyName}</h3>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <Mail className="h-4 w-4 text-muted-foreground mt-1" />
+                  <div>
+                    <p className="text-sm font-medium">Email</p>
+                    <p className="text-sm text-muted-foreground">{vendor.email}</p>
+                  </div>
+                </div>
+
+                {vendor.phone && (
+                  <div className="flex items-start gap-3">
+                    <Phone className="h-4 w-4 text-muted-foreground mt-1" />
+                    <div>
+                      <p className="text-sm font-medium">Phone</p>
+                      <p className="text-sm text-muted-foreground">{vendor.phone}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-start gap-3">
+                  <Hash className="h-4 w-4 text-muted-foreground mt-1" />
+                  <div>
+                    <p className="text-sm font-medium">GST Number</p>
+                    <p className="text-sm text-muted-foreground">{vendor.gstNumber}</p>
+                  </div>
+                </div>
+
+                {vendor.address && (
+                  <div className="flex items-start gap-3">
+                    <MapPin className="h-4 w-4 text-muted-foreground mt-1" />
+                    <div>
+                      <p className="text-sm font-medium">Address</p>
+                      <p className="text-sm text-muted-foreground">{vendor.address}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowVendorDetails(null)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     </>
   );
 }

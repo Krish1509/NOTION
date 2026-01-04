@@ -22,11 +22,12 @@ interface VendorCreationFormProps {
   onVendorCreated: (vendorId: Id<"vendors">) => void;
   onCancel: () => void;
   itemName?: string; // For auto-linking vendor to item
+  initialCompanyName?: string; // Pre-fill company name from search
 }
 
-export function VendorCreationForm({ onVendorCreated, onCancel, itemName }: VendorCreationFormProps) {
+export function VendorCreationForm({ onVendorCreated, onCancel, itemName, initialCompanyName }: VendorCreationFormProps) {
   const [formData, setFormData] = useState({
-    companyName: "",
+    companyName: initialCompanyName || "",
     email: "",
     phone: "",
     gstNumber: "",

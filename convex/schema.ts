@@ -272,6 +272,8 @@ export default defineSchema({
       v.object({
         vendorId: v.id("vendors"),
         unitPrice: v.number(), // Unit price in ₹
+        amount: v.optional(v.number()), // Quote amount/quantity
+        unit: v.optional(v.string()), // Unit of measurement
       })
     ),
     selectedVendorId: v.optional(v.id("vendors")), // Selected by manager

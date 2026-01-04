@@ -192,6 +192,8 @@ export const upsertCostComparison = mutation({
       v.object({
         vendorId: v.id("vendors"),
         unitPrice: v.number(),
+        amount: v.optional(v.number()),
+        unit: v.optional(v.string()),
       })
     ),
     isDirectDelivery: v.boolean(),
@@ -389,6 +391,8 @@ export const resubmitCostComparison = mutation({
       v.object({
         vendorId: v.id("vendors"),
         unitPrice: v.number(),
+        amount: v.optional(v.number()),
+        unit: v.optional(v.string()),
       })
     ),
     isDirectDelivery: v.boolean(),
