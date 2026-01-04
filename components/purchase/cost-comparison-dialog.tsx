@@ -112,6 +112,7 @@ export function CostComparisonDialog({
   const [showCreateVendorDialog, setShowCreateVendorDialog] = useState(false);
   const [vendorSearchTerm, setVendorSearchTerm] = useState("");
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
+  const [selectedVendorIndex, setSelectedVendorIndex] = useState(-1);
 
   // Unit suggestions state
   const [showUnitSuggestions, setShowUnitSuggestions] = useState(false);
@@ -508,6 +509,7 @@ export function CostComparisonDialog({
     setQuoteUnit(suggestion);
     setShowUnitSuggestions(false);
     setSelectedUnitIndex(-1);
+    // Auto-focus back to the input or next field for better UX
   };
 
   const handleQuoteUnitFocus = () => {
@@ -969,6 +971,7 @@ export function CostComparisonDialog({
                   setShowCreateVendorDialog(false);
                   setVendorSearchTerm("");
                   setShowVendorDropdown(false);
+                  setSelectedVendorIndex(-1);
                   setShowUnitSuggestions(false);
                   setSelectedUnitIndex(-1);
                   setShowUnitSuggestions(false);
@@ -995,14 +998,46 @@ export function CostComparisonDialog({
                           placeholder="Search and select vendor..."
                           value={vendorSearchTerm}
                           onChange={(e) => setVendorSearchTerm(e.target.value)}
+                          onKeyDown={(e) => {
+                            const suggestions = vendorSearchTerm.trim() ? [
+                              ...filteredVendors,
+                              { _id: 'create', companyName: `Create "${vendorSearchTerm}" as new vendor` }
+                            ] : filteredVendors;
+
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              setSelectedVendorIndex(prev =>
+                                prev < suggestions.length - 1 ? prev + 1 : prev
+                              );
+                            } else if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              setSelectedVendorIndex(prev => prev > 0 ? prev - 1 : -1);
+                            } else if (e.key === 'Enter' && selectedVendorIndex >= 0) {
+                              e.preventDefault();
+                              const selected = suggestions[selectedVendorIndex];
+                              if (selected._id === 'create') {
+                                setShowCreateVendorDialog(true);
+                                setShowVendorDropdown(false);
+                              } else {
+                                setSelectedVendorId(selected._id as Id<"vendors">);
+                                setVendorSearchTerm(selected.companyName);
+                                setShowVendorDropdown(false);
+                              }
+                              setSelectedVendorIndex(-1);
+                            } else if (e.key === 'Escape') {
+                              setShowVendorDropdown(false);
+                              setSelectedVendorIndex(-1);
+                            }
+                          }}
                           className="text-sm"
                           onFocus={() => setShowVendorDropdown(true)}
                           onBlur={() => setTimeout(() => setShowVendorDropdown(false), 200)}
+                          required
                         />
                         {showVendorDropdown && (
                           <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                             {filteredVendors.length > 0 ? (
-                              filteredVendors.map((vendor) => (
+                              filteredVendors.map((vendor, index) => (
                                 <div
                                   key={vendor._id}
                                   onClick={() => {
@@ -1010,7 +1045,9 @@ export function CostComparisonDialog({
                                     setVendorSearchTerm(vendor.companyName);
                                     setShowVendorDropdown(false);
                                   }}
-                                  className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between cursor-pointer"
+                                  className={`w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between cursor-pointer ${
+                                    index === selectedVendorIndex ? 'bg-muted' : ''
+                                  }`}
                                 >
                                   <span>{vendor.companyName}</span>
                                   <div
@@ -1030,7 +1067,9 @@ export function CostComparisonDialog({
                                   setShowCreateVendorDialog(true);
                                   setShowVendorDropdown(false);
                                 }}
-                                className="w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors cursor-pointer"
+                                className={`w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors cursor-pointer ${
+                                  filteredVendors.length === selectedVendorIndex ? 'bg-blue-50 dark:bg-blue-950/50' : ''
+                                }`}
                               >
                                 <Plus className="h-3 w-3 inline mr-1" />
                                 Create "{vendorSearchTerm}" as new vendor
@@ -1056,53 +1095,6 @@ export function CostComparisonDialog({
                       >
                         <X className="h-4 w-4" />
                       </Button>
-                        {showVendorDropdown && (
-                          <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                            {filteredVendors.length > 0 ? (
-                              filteredVendors.map((vendor) => (
-                                <button
-                                  key={vendor._id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedVendorId(vendor._id);
-                                    setVendorSearchTerm(vendor.companyName);
-                                    setShowVendorDropdown(false);
-                                  }}
-                                  className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between"
-                                >
-                                  <span>{vendor.companyName}</span>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setShowVendorDetails(vendor._id);
-                                    }}
-                                    className="h-6 w-6 p-0 opacity-60 hover:opacity-100"
-                                  >
-                                    <Info className="h-3 w-3" />
-                                  </Button>
-                                </button>
-                              ))
-                            ) : vendorSearchTerm.trim() ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowCreateVendorDialog(true);
-                                  setShowVendorDropdown(false);
-                                }}
-                                className="w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
-                              >
-                                <Plus className="h-3 w-3 inline mr-1" />
-                                Create "{vendorSearchTerm}" as new vendor
-                              </button>
-                            ) : (
-                              <div className="px-3 py-2 text-sm text-muted-foreground">
-                                No vendors available
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                       <Button
                         variant="outline"
@@ -1119,7 +1111,7 @@ export function CostComparisonDialog({
                   {/* Amount, Unit, Price Row */}
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Amount</Label>
+                      <Label className="text-sm font-medium">Amount *</Label>
                       <Input
                         type="number"
                         min="1"
@@ -1128,10 +1120,11 @@ export function CostComparisonDialog({
                         onChange={(e) => setQuoteAmount(e.target.value)}
                         placeholder="1"
                         className="text-sm"
+                        required
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Unit</Label>
+                      <Label className="text-sm font-medium">Unit *</Label>
                       <div className="relative">
                         <Input
                           type="text"
@@ -1142,6 +1135,7 @@ export function CostComparisonDialog({
                           onBlur={handleQuoteUnitBlur}
                           placeholder={request?.unit || itemInInventory?.unit || "kg"}
                           className="text-sm"
+                          required
                         />
                         {showUnitSuggestions && getFilteredUnitSuggestionsForQuote(quoteUnit).length > 0 && (
                           <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
@@ -1149,7 +1143,7 @@ export function CostComparisonDialog({
                               <button
                                 key={suggestion}
                                 type="button"
-                                onClick={() => handleUnitSuggestionClick(suggestion)}
+                                onClick={() => handleQuoteUnitSuggestionClick(suggestion)}
                                 className={`w-full px-3 py-1.5 text-left text-xs hover:bg-muted transition-colors ${
                                   index === selectedUnitIndex ? 'bg-muted font-medium' : ''
                                 }`}
@@ -1162,7 +1156,7 @@ export function CostComparisonDialog({
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Price (₹)</Label>
+                      <Label className="text-sm font-medium">Price (₹) *</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -1170,7 +1164,8 @@ export function CostComparisonDialog({
                         value={unitPrice}
                         onChange={(e) => setUnitPrice(e.target.value)}
                         placeholder="0.00"
-                        className="text-lg font-semibold"
+                        className="text-sm font-semibold"
+                        required
                       />
                     </div>
                   </div>
@@ -1380,7 +1375,8 @@ export function CostComparisonDialog({
               </div>
               <div className="flex gap-2">
                 <Button
-                  variant="destructive"
+                  variant="outline"
+                  className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
                   onClick={async () => {
                     if (!managerNotes.trim()) {
                       toast.error("Please provide a reason for rejection");
@@ -1404,7 +1400,6 @@ export function CostComparisonDialog({
                   }}
                   disabled={isReviewing}
                   size="sm"
-                  className="flex-1"
                 >
                   <X className="h-3.5 w-3.5 mr-1.5" />
                   Reject CC

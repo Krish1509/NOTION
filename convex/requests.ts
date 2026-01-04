@@ -143,6 +143,26 @@ export const getUserRequests = query({
           ? await ctx.db.get(request.approvedBy)
           : null;
 
+        // Fetch vendor information from cost comparison
+        let selectedVendorId: Id<"vendors"> | null = null;
+        let vendorQuotes: Array<{vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string}> = [];
+        const costComparison = await ctx.db
+          .query("costComparisons")
+          .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
+          .unique();
+
+        if (costComparison) {
+          // If approved, use selected vendor
+          if (costComparison.status === "cc_approved" && costComparison.selectedVendorId) {
+            selectedVendorId = costComparison.selectedVendorId;
+          }
+          // If draft or pending, show first vendor from quotes
+          else if (costComparison.vendorQuotes && costComparison.vendorQuotes.length > 0) {
+            selectedVendorId = costComparison.vendorQuotes[0].vendorId;
+            vendorQuotes = costComparison.vendorQuotes;
+          }
+        }
+
         return {
           ...request,
           site: site
@@ -166,6 +186,8 @@ export const getUserRequests = query({
                 fullName: approver.fullName,
               }
             : null,
+          selectedVendorId,
+          vendorQuotes,
         };
       })
     );
@@ -210,6 +232,26 @@ export const getRequestsReadyForCC = query({
           ? await ctx.db.get(request.approvedBy)
           : null;
 
+        // Fetch vendor information from cost comparison
+        let selectedVendorId: Id<"vendors"> | null = null;
+        let vendorQuotes: Array<{vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string}> = [];
+        const costComparison = await ctx.db
+          .query("costComparisons")
+          .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
+          .unique();
+
+        if (costComparison) {
+          // If approved, use selected vendor
+          if (costComparison.status === "cc_approved" && costComparison.selectedVendorId) {
+            selectedVendorId = costComparison.selectedVendorId;
+          }
+          // If draft or pending, show first vendor from quotes
+          else if (costComparison.vendorQuotes && costComparison.vendorQuotes.length > 0) {
+            selectedVendorId = costComparison.vendorQuotes[0].vendorId;
+            vendorQuotes = costComparison.vendorQuotes;
+          }
+        }
+
         return {
           ...request,
           site: site
@@ -233,6 +275,8 @@ export const getRequestsReadyForCC = query({
                 fullName: approver.fullName,
               }
             : null,
+          selectedVendorId,
+          vendorQuotes,
         };
       })
     );
@@ -286,7 +330,7 @@ export const getPurchaseRequestsByStatus = query({
       requests = await ctx.db
         .query("requests")
         .collect();
-      
+
       requests = requests.filter((r) =>
         ["ready_for_cc", "cc_rejected", "cc_pending", "cc_approved", "ready_for_po", "delivery_stage"].includes(r.status)
       );
@@ -300,6 +344,26 @@ export const getPurchaseRequestsByStatus = query({
         const approver = request.approvedBy
           ? await ctx.db.get(request.approvedBy)
           : null;
+
+        // Fetch vendor information from cost comparison
+        let selectedVendorId: Id<"vendors"> | null = null;
+        let vendorQuotes: Array<{vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string}> = [];
+        const costComparison = await ctx.db
+          .query("costComparisons")
+          .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
+          .first();
+
+        if (costComparison) {
+          // If approved, use selected vendor
+          if (costComparison.status === "cc_approved" && costComparison.selectedVendorId) {
+            selectedVendorId = costComparison.selectedVendorId;
+          }
+          // If draft or pending, show first vendor from quotes
+          else if (costComparison.vendorQuotes && costComparison.vendorQuotes.length > 0) {
+            selectedVendorId = costComparison.vendorQuotes[0].vendorId;
+            vendorQuotes = costComparison.vendorQuotes;
+          }
+        }
 
         return {
           ...request,
@@ -324,6 +388,8 @@ export const getPurchaseRequestsByStatus = query({
                 fullName: approver.fullName,
               }
             : null,
+          selectedVendorId,
+          vendorQuotes,
         };
       })
     );
@@ -368,6 +434,26 @@ export const getAllRequests = query({
           ? await ctx.db.get(request.approvedBy)
           : null;
 
+        // Fetch vendor information from cost comparison
+        let selectedVendorId: Id<"vendors"> | null = null;
+        let vendorQuotes: Array<{vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string}> = [];
+        const costComparison = await ctx.db
+          .query("costComparisons")
+          .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
+          .unique();
+
+        if (costComparison) {
+          // If approved, use selected vendor
+          if (costComparison.status === "cc_approved" && costComparison.selectedVendorId) {
+            selectedVendorId = costComparison.selectedVendorId;
+          }
+          // If draft or pending, show first vendor from quotes
+          else if (costComparison.vendorQuotes && costComparison.vendorQuotes.length > 0) {
+            selectedVendorId = costComparison.vendorQuotes[0].vendorId;
+            vendorQuotes = costComparison.vendorQuotes;
+          }
+        }
+
         return {
           ...request,
           site: site
@@ -391,6 +477,8 @@ export const getAllRequests = query({
                 fullName: approver.fullName,
               }
             : null,
+          selectedVendorId,
+          vendorQuotes,
         };
       })
     );

@@ -49,6 +49,13 @@ interface RequestItem {
   creator?: {
     fullName: string;
   } | null;
+  selectedVendorId?: Id<"vendors"> | null;
+  vendorQuotes?: Array<{
+    vendorId: Id<"vendors">;
+    unitPrice: number;
+    amount?: number;
+    unit?: string;
+  }>;
 }
 
 interface Vendor {
@@ -59,7 +66,6 @@ interface Vendor {
 }
 
 interface ItemWithVendor extends RequestItem {
-  selectedVendorId?: Id<"vendors"> | "";
   vendorQuantity?: string;
   vendorUnit?: string;
   vendorQuantityInput?: string;
@@ -362,7 +368,7 @@ export function PurchaseRequestGroupCard({
   useEffect(() => {
     const itemsWithVendorData: ItemWithVendor[] = items.map(item => ({
       ...item,
-      selectedVendorId: "",
+      selectedVendorId: null,
       vendorQuantity: item.quantity.toString(),
       vendorUnit: item.unit || "",
       vendorQuantityInput: item.unit ? `${item.quantity} ${item.unit}` : item.quantity.toString(),
@@ -568,17 +574,7 @@ export function PurchaseRequestGroupCard({
                       <Building className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-xs font-medium text-muted-foreground">Vendor Details</span>
                     </div>
-                    {!isEditing ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEditingItemId(item._id)}
-                        className="h-6 text-xs px-2"
-                      >
-                        <Edit className="h-3 w-3 mr-1" />
-                        Edit
-                      </Button>
-                    ) : (
+                    {isEditing && (
                       <div className="flex items-center gap-1">
                         <Button
                           variant="outline"
@@ -612,7 +608,7 @@ export function PurchaseRequestGroupCard({
                         <div className="relative">
                           <Select
                             value={item.selectedVendorId || ""}
-                            onValueChange={(value) => updateItemWithVendor(item._id, { selectedVendorId: value as Id<"vendors"> || "" })}
+                            onValueChange={(value) => updateItemWithVendor(item._id, { selectedVendorId: value as Id<"vendors"> || null })}
                           >
                             <SelectTrigger className="h-8 text-xs">
                               <SelectValue placeholder="Choose vendor..." />
@@ -737,6 +733,22 @@ export function PurchaseRequestGroupCard({
                               )}
                             </div>
                           )}
+                        </>
+                      ) : item.vendorQuotes && item.vendorQuotes.length > 0 ? (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">Vendors Quoted:</span>
+                            <span>{item.vendorQuotes.length} vendor{item.vendorQuotes.length !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {item.vendorQuotes.slice(0, 2).map((quote, index) => (
+                              <span key={quote.vendorId}>
+                                {getVendorName(quote.vendorId)}
+                                {index < Math.min(item.vendorQuotes!.length - 1, 1) && ', '}
+                              </span>
+                            ))}
+                            {item.vendorQuotes.length > 2 && ` +${item.vendorQuotes.length - 2} more`}
+                          </div>
                         </>
                       ) : (
                         <span className="italic">No vendor selected</span>
