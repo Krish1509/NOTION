@@ -23,6 +23,7 @@ import {
 import { Plus, Search, LayoutGrid, Table2, RefreshCw } from "lucide-react";
 import { SiteFormDialog } from "./site-form-dialog";
 import { SiteTable } from "./site-table";
+import { useViewMode } from "@/hooks/use-view-mode";
 
 type ViewMode = "table" | "card";
 type SortOption = "newest" | "oldest" | "name_asc" | "name_desc";
@@ -32,22 +33,10 @@ export function SiteManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<SortOption>("newest");
-  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const { viewMode, toggleViewMode } = useViewMode("site-view-mode");
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { isLoaded, isSignedIn } = useAuth();
-
-  // Auto-detect mobile and switch to card view
-  useEffect(() => {
-    const checkMobile = () => {
-      if (window.innerWidth < 768) {
-        setViewMode("card");
-      }
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
   // Only fetch sites if user is signed in
   const sites = useQuery(
@@ -177,29 +166,26 @@ export function SiteManagement() {
           {/* View mode toggle */}
           <div className="flex gap-1 ml-auto">
             <Button
-              variant={viewMode === "table" ? "default" : "outline"}
+              variant="outline"
               size="icon"
-              onClick={() => setViewMode("table")}
-              className="h-9 w-9"
+              onClick={toggleViewMode}
+              className="h-9 w-9 flex-shrink-0"
+              title={viewMode === "card" ? "Show Table" : "Show Cards"}
             >
-              <Table2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === "card" ? "default" : "outline"}
-              size="icon"
-              onClick={() => setViewMode("card")}
-              className="h-9 w-9"
-            >
-              <LayoutGrid className="h-4 w-4" />
+              {viewMode === "card" ? (
+                <Table2 className="h-4 w-4" />
+              ) : (
+                <LayoutGrid className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>
       </div>
 
       {/* Site table/cards */}
-      <SiteTable 
+      <SiteTable
         key={refreshKey}
-        sites={filteredAndSortedSites ?? undefined} 
+        sites={filteredAndSortedSites ?? undefined}
         viewMode={viewMode}
       />
 

@@ -134,6 +134,20 @@ export const getUserRequests = query({
       .order("desc")
       .collect();
 
+    // Gather request numbers for efficient notes counting
+    const requestNumbers = [...new Set(requests.map((r) => r.requestNumber))];
+    const notesCounts = new Map<string, number>();
+
+    await Promise.all(
+      requestNumbers.map(async (num) => {
+        const notes = await ctx.db
+          .query("request_notes")
+          .withIndex("by_request_number", (q) => q.eq("requestNumber", num))
+          .collect();
+        notesCounts.set(num, notes.length);
+      })
+    );
+
     // Fetch related data (site, creator, approver)
     const requestsWithDetails = await Promise.all(
       requests.map(async (request) => {
@@ -145,7 +159,7 @@ export const getUserRequests = query({
 
         // Fetch vendor information from cost comparison
         let selectedVendorId: Id<"vendors"> | null = null;
-        let vendorQuotes: Array<{vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string}> = [];
+        let vendorQuotes: Array<{ vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string }> = [];
         const costComparison = await ctx.db
           .query("costComparisons")
           .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
@@ -167,27 +181,28 @@ export const getUserRequests = query({
           ...request,
           site: site
             ? {
-                _id: site._id,
-                name: site.name,
-                code: site.code,
-                address: site.address,
-              }
+              _id: site._id,
+              name: site.name,
+              code: site.code,
+              address: site.address,
+            }
             : null,
           creator: creator
             ? {
-                _id: creator._id,
-                fullName: creator.fullName,
-                role: creator.role,
-              }
+              _id: creator._id,
+              fullName: creator.fullName,
+              role: creator.role,
+            }
             : null,
           approver: approver
             ? {
-                _id: approver._id,
-                fullName: approver.fullName,
-              }
+              _id: approver._id,
+              fullName: approver.fullName,
+            }
             : null,
           selectedVendorId,
           vendorQuotes,
+          notesCount: notesCounts.get(request.requestNumber) || 0,
         };
       })
     );
@@ -224,6 +239,20 @@ export const getRequestsReadyForCC = query({
       .collect();
 
     // Fetch related data
+    // Gather request numbers for efficient notes counting
+    const requestNumbers = [...new Set(requests.map((r) => r.requestNumber))];
+    const notesCounts = new Map<string, number>();
+
+    await Promise.all(
+      requestNumbers.map(async (num) => {
+        const notes = await ctx.db
+          .query("request_notes")
+          .withIndex("by_request_number", (q) => q.eq("requestNumber", num))
+          .collect();
+        notesCounts.set(num, notes.length);
+      })
+    );
+
     const requestsWithDetails = await Promise.all(
       requests.map(async (request) => {
         const site = await ctx.db.get(request.siteId);
@@ -234,7 +263,7 @@ export const getRequestsReadyForCC = query({
 
         // Fetch vendor information from cost comparison
         let selectedVendorId: Id<"vendors"> | null = null;
-        let vendorQuotes: Array<{vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string}> = [];
+        let vendorQuotes: Array<{ vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string }> = [];
         const costComparison = await ctx.db
           .query("costComparisons")
           .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
@@ -256,27 +285,28 @@ export const getRequestsReadyForCC = query({
           ...request,
           site: site
             ? {
-                _id: site._id,
-                name: site.name,
-                code: site.code,
-                address: site.address,
-              }
+              _id: site._id,
+              name: site.name,
+              code: site.code,
+              address: site.address,
+            }
             : null,
           creator: creator
             ? {
-                _id: creator._id,
-                fullName: creator.fullName,
-                role: creator.role,
-              }
+              _id: creator._id,
+              fullName: creator.fullName,
+              role: creator.role,
+            }
             : null,
           approver: approver
             ? {
-                _id: approver._id,
-                fullName: approver.fullName,
-              }
+              _id: approver._id,
+              fullName: approver.fullName,
+            }
             : null,
           selectedVendorId,
           vendorQuotes,
+          notesCount: notesCounts.get(request.requestNumber) || 0,
         };
       })
     );
@@ -337,6 +367,20 @@ export const getPurchaseRequestsByStatus = query({
     }
 
     // Fetch related data
+    // Gather request numbers for efficient notes counting
+    const requestNumbers = [...new Set(requests.map((r) => r.requestNumber))];
+    const notesCounts = new Map<string, number>();
+
+    await Promise.all(
+      requestNumbers.map(async (num) => {
+        const notes = await ctx.db
+          .query("request_notes")
+          .withIndex("by_request_number", (q) => q.eq("requestNumber", num))
+          .collect();
+        notesCounts.set(num, notes.length);
+      })
+    );
+
     const requestsWithDetails = await Promise.all(
       requests.map(async (request) => {
         const site = await ctx.db.get(request.siteId);
@@ -347,7 +391,7 @@ export const getPurchaseRequestsByStatus = query({
 
         // Fetch vendor information from cost comparison
         let selectedVendorId: Id<"vendors"> | null = null;
-        let vendorQuotes: Array<{vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string}> = [];
+        let vendorQuotes: Array<{ vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string }> = [];
         const costComparison = await ctx.db
           .query("costComparisons")
           .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
@@ -369,27 +413,28 @@ export const getPurchaseRequestsByStatus = query({
           ...request,
           site: site
             ? {
-                _id: site._id,
-                name: site.name,
-                code: site.code,
-                address: site.address,
-              }
+              _id: site._id,
+              name: site.name,
+              code: site.code,
+              address: site.address,
+            }
             : null,
           creator: creator
             ? {
-                _id: creator._id,
-                fullName: creator.fullName,
-                role: creator.role,
-              }
+              _id: creator._id,
+              fullName: creator.fullName,
+              role: creator.role,
+            }
             : null,
           approver: approver
             ? {
-                _id: approver._id,
-                fullName: approver.fullName,
-              }
+              _id: approver._id,
+              fullName: approver.fullName,
+            }
             : null,
           selectedVendorId,
           vendorQuotes,
+          notesCount: notesCounts.get(request.requestNumber) || 0,
         };
       })
     );
@@ -425,6 +470,20 @@ export const getAllRequests = query({
       .order("desc")
       .collect();
 
+    // Gather request numbers for efficient notes counting
+    const requestNumbers = [...new Set(requests.map((r) => r.requestNumber))];
+    const notesCounts = new Map<string, number>();
+
+    await Promise.all(
+      requestNumbers.map(async (num) => {
+        const notes = await ctx.db
+          .query("request_notes")
+          .withIndex("by_request_number", (q) => q.eq("requestNumber", num))
+          .collect();
+        notesCounts.set(num, notes.length);
+      })
+    );
+
     // Fetch related data (site, creator, approver)
     const requestsWithDetails = await Promise.all(
       requests.map(async (request) => {
@@ -436,7 +495,7 @@ export const getAllRequests = query({
 
         // Fetch vendor information from cost comparison
         let selectedVendorId: Id<"vendors"> | null = null;
-        let vendorQuotes: Array<{vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string}> = [];
+        let vendorQuotes: Array<{ vendorId: Id<"vendors">, unitPrice: number, amount?: number, unit?: string }> = [];
         const costComparison = await ctx.db
           .query("costComparisons")
           .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
@@ -458,27 +517,28 @@ export const getAllRequests = query({
           ...request,
           site: site
             ? {
-                _id: site._id,
-                name: site.name,
-                code: site.code,
-                address: site.address,
-              }
+              _id: site._id,
+              name: site.name,
+              code: site.code,
+              address: site.address,
+            }
             : null,
           creator: creator
             ? {
-                _id: creator._id,
-                fullName: creator.fullName,
-                role: creator.role,
-              }
+              _id: creator._id,
+              fullName: creator.fullName,
+              role: creator.role,
+            }
             : null,
           approver: approver
             ? {
-                _id: approver._id,
-                fullName: approver.fullName,
-              }
+              _id: approver._id,
+              fullName: approver.fullName,
+            }
             : null,
           selectedVendorId,
           vendorQuotes,
+          notesCount: notesCounts.get(request.requestNumber) || 0,
         };
       })
     );
@@ -532,11 +592,11 @@ export const getRequestsByRequestNumber = query({
           ...request,
           site: site
             ? {
-                _id: site._id,
-                name: site.name,
-                code: site.code,
-                address: site.address,
-              }
+              _id: site._id,
+              name: site.name,
+              code: site.code,
+              address: site.address,
+            }
             : null,
         };
       })
@@ -587,23 +647,23 @@ export const getRequestById = query({
       ...request,
       site: site
         ? {
-            _id: site._id,
-            name: site.name,
-            code: site.code,
-            address: site.address,
-          }
+          _id: site._id,
+          name: site.name,
+          code: site.code,
+          address: site.address,
+        }
         : null,
       creator: creator
         ? {
-            _id: creator._id,
-            fullName: creator.fullName,
-          }
+          _id: creator._id,
+          fullName: creator.fullName,
+        }
         : null,
       approver: approver
         ? {
-            _id: approver._id,
-            fullName: approver.fullName,
-          }
+          _id: approver._id,
+          fullName: approver.fullName,
+        }
         : null,
     };
   },
@@ -663,24 +723,24 @@ export const createMaterialRequest = mutation({
     if (args.requestNumber) {
       requestNumber = args.requestNumber;
     } else {
-    // Generate unique sequential request number (001, 002, 003, etc.)
-    const allRequests = await ctx.db.query("requests").collect();
-    
-    // Find the highest existing request number (if in numeric format)
-    let maxNumber = 0;
-    for (const request of allRequests) {
-      // Try to parse as a 3-digit number (001, 002, etc.)
-      const numMatch = request.requestNumber.match(/^(\d{3})$/);
-      if (numMatch) {
-        const num = parseInt(numMatch[1], 10);
-        if (num > maxNumber) {
-          maxNumber = num;
+      // Generate unique sequential request number (001, 002, 003, etc.)
+      const allRequests = await ctx.db.query("requests").collect();
+
+      // Find the highest existing request number (if in numeric format)
+      let maxNumber = 0;
+      for (const request of allRequests) {
+        // Try to parse as a 3-digit number (001, 002, etc.)
+        const numMatch = request.requestNumber.match(/^(\d{3})$/);
+        if (numMatch) {
+          const num = parseInt(numMatch[1], 10);
+          if (num > maxNumber) {
+            maxNumber = num;
+          }
         }
       }
-    }
-    
-    // Generate next sequential number with leading zeros
-    const nextNumber = maxNumber + 1;
+
+      // Generate next sequential number with leading zeros
+      const nextNumber = maxNumber + 1;
       requestNumber = nextNumber.toString().padStart(3, "0");
     }
 
@@ -734,6 +794,7 @@ export const createMultipleMaterialRequests = mutation({
         ),
       })
     ),
+    orderNote: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUser(ctx);
@@ -762,7 +823,7 @@ export const createMultipleMaterialRequests = mutation({
 
     // Generate unique sequential request number (001, 002, 003, etc.)
     const allRequests = await ctx.db.query("requests").collect();
-    
+
     // Find the highest existing request number (if in numeric format)
     let maxNumber = 0;
     for (const request of allRequests) {
@@ -775,7 +836,7 @@ export const createMultipleMaterialRequests = mutation({
         }
       }
     }
-    
+
     // Generate next sequential number with leading zeros
     const nextNumber = maxNumber + 1;
     const requestNumber = nextNumber.toString().padStart(3, "0");
@@ -807,6 +868,18 @@ export const createMultipleMaterialRequests = mutation({
       requestIds.push(requestId);
     }
 
+    // Create order note if provided
+    if (args.orderNote && args.orderNote.trim().length > 0) {
+      await ctx.db.insert("request_notes", {
+        requestNumber,
+        userId: currentUser._id,
+        role: currentUser.role,
+        status: "pending",
+        content: args.orderNote,
+        createdAt: now,
+      });
+    }
+
     return { requestIds, requestNumber };
   },
 });
@@ -836,6 +909,7 @@ export const saveMultipleMaterialRequestsAsDraft = mutation({
         ),
       })
     ),
+    orderNote: v.optional(v.string()), // Added orderNote
   },
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUser(ctx);
@@ -868,7 +942,7 @@ export const saveMultipleMaterialRequestsAsDraft = mutation({
       .query("requests")
       .withIndex("by_status", (q) => q.eq("status", "draft"))
       .collect();
-    
+
     let maxDraftNumber = 0;
     for (const draft of allDrafts) {
       const draftMatch = draft.requestNumber.match(/^DRAFT-(\d{3})$/);
@@ -879,7 +953,7 @@ export const saveMultipleMaterialRequestsAsDraft = mutation({
         }
       }
     }
-    
+
     const nextDraftNumber = maxDraftNumber + 1;
     const requestNumber = `DRAFT-${nextDraftNumber.toString().padStart(3, "0")}`;
 
@@ -910,6 +984,18 @@ export const saveMultipleMaterialRequestsAsDraft = mutation({
       requestIds.push(requestId);
     }
 
+    // Create order note if provided
+    if (args.orderNote && args.orderNote.trim().length > 0) {
+      await ctx.db.insert("request_notes", {
+        requestNumber,
+        userId: currentUser._id,
+        role: currentUser.role,
+        status: "draft",
+        content: args.orderNote,
+        createdAt: now,
+      });
+    }
+
     return { requestIds, requestNumber };
   },
 });
@@ -920,7 +1006,7 @@ export const saveMultipleMaterialRequestsAsDraft = mutation({
 export const updateRequestStatus = mutation({
   args: {
     requestId: v.id("requests"),
-    status: v.union(v.literal("approved"), v.literal("rejected"), v.literal("direct_po")),
+    status: v.union(v.literal("approved"), v.literal("rejected"), v.literal("direct_po"), v.literal("delivery_stage")), // Added delivery_stage
     rejectionReason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -943,24 +1029,64 @@ export const updateRequestStatus = mutation({
     const now = Date.now();
 
     // Determine new status based on action
-    let newStatus: "ready_for_cc" | "ready_for_po" | "rejected";
+    // Logic updated: Direct PO and Direct Delivery now go to 'ready_for_cc' but with a directAction flag,
+    // allowing the Purchase Officer to see them "side of cc" and execute the direct action.
+    let newStatus: "ready_for_cc" | "rejected";
+    let directAction: "po" | "delivery" | undefined = undefined;
+
     if (args.status === "approved") {
-      newStatus = "ready_for_cc"; // Normal approval goes to cost comparison
+      newStatus = "ready_for_cc"; // Normal approval
     } else if (args.status === "direct_po") {
-      newStatus = "ready_for_po"; // Direct PO bypasses cost comparison
+      newStatus = "ready_for_cc"; // Goes to Purchaser, but flagged for PO
+      directAction = "po";
+    } else if (args.status === "delivery_stage") {
+      newStatus = "ready_for_cc"; // Goes to Purchaser, but flagged for Delivery
+      directAction = "delivery";
     } else {
-      newStatus = "rejected"; // Rejected stays rejected
+      newStatus = "rejected";
     }
 
     // Update request
-    await ctx.db.patch(args.requestId, {
+    const updates: any = {
       status: newStatus,
       approvedBy: currentUser._id,
       approvedAt: now,
       rejectionReason:
         args.status === "rejected" ? args.rejectionReason : undefined,
       updatedAt: now,
-    });
+    };
+
+    if (directAction) {
+      updates.directAction = directAction;
+    }
+
+    await ctx.db.patch(args.requestId, updates);
+
+    // Add rejection note to timeline
+    if (args.status === "rejected" && args.rejectionReason) {
+      // Check if a similar note was just added to avoid duplicates if multiple calls happen quickly
+      const recentNotes = await ctx.db
+        .query("request_notes")
+        .withIndex("by_request_number", (q) => q.eq("requestNumber", request.requestNumber))
+        .order("desc")
+        .take(1);
+
+      const content = `Rejected: ${args.rejectionReason}`;
+      const isDuplicate = recentNotes.length > 0 &&
+        recentNotes[0].content === content &&
+        (now - recentNotes[0].createdAt) < 5000;
+
+      if (!isDuplicate) {
+        await ctx.db.insert("request_notes", {
+          requestNumber: request.requestNumber,
+          userId: currentUser._id,
+          role: currentUser.role,
+          status: "rejected",
+          content: content,
+          createdAt: now,
+        });
+      }
+    }
 
     return { success: true };
   },
@@ -972,7 +1098,7 @@ export const updateRequestStatus = mutation({
 export const bulkUpdateRequestStatus = mutation({
   args: {
     requestIds: v.array(v.id("requests")),
-    status: v.union(v.literal("approved"), v.literal("rejected"), v.literal("direct_po")),
+    status: v.union(v.literal("approved"), v.literal("rejected"), v.literal("direct_po"), v.literal("delivery_stage")), // Added delivery_stage
     rejectionReason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -989,51 +1115,74 @@ export const bulkUpdateRequestStatus = mutation({
 
     const now = Date.now();
 
-    // Determine new status based on action
-    let newStatus: "ready_for_cc" | "ready_for_po" | "rejected";
+    // Determine new status and flags
+    let newStatus: "ready_for_cc" | "rejected";
+    let directAction: "po" | "delivery" | undefined = undefined;
+
     if (args.status === "approved") {
-      newStatus = "ready_for_cc"; // Normal approval goes to cost comparison
+      newStatus = "ready_for_cc";
     } else if (args.status === "direct_po") {
-      newStatus = "ready_for_po"; // Direct PO bypasses cost comparison
+      newStatus = "ready_for_cc";
+      directAction = "po";
+    } else if (args.status === "delivery_stage") {
+      newStatus = "ready_for_cc";
+      directAction = "delivery";
     } else {
-      newStatus = "rejected"; // Rejected stays rejected
+      newStatus = "rejected";
     }
 
-    // Update all requests
-    const results = await Promise.allSettled(
+    const updates: any = {
+      status: newStatus,
+      approvedBy: currentUser._id,
+      approvedAt: now,
+      rejectionReason:
+        args.status === "rejected" ? args.rejectionReason : undefined,
+      updatedAt: now,
+    };
+
+    if (directAction) {
+      updates.directAction = directAction;
+    }
+
+    const processedRequestNumbers = new Set<string>();
+
+    // Process all requests in parallel
+    await Promise.all(
       args.requestIds.map(async (requestId) => {
         const request = await ctx.db.get(requestId);
-        if (!request) {
-          throw new Error(`Request ${requestId} not found`);
-        }
+        if (!request || request.status !== "pending") return; // Skip invalid or non-pending
 
-        if (request.status !== "pending") {
-          throw new Error(`Request ${requestId} status can only be updated from pending`);
-        }
-
-        await ctx.db.patch(requestId, {
-          status: newStatus,
-          approvedBy: currentUser._id,
-          approvedAt: now,
-          rejectionReason:
-            args.status === "rejected" ? args.rejectionReason : undefined,
-          updatedAt: now,
-        });
+        await ctx.db.patch(requestId, updates);
+        processedRequestNumbers.add(request.requestNumber);
       })
     );
 
-    // Check for errors
-    const errors = results
-      .map((result, index) => {
-        if (result.status === "rejected") {
-          return `Request ${args.requestIds[index]}: ${result.reason}`;
-        }
-        return null;
-      })
-      .filter((error) => error !== null);
+    // Add rejection notes to timeline (grouped by request number)
+    if (args.status === "rejected" && args.rejectionReason) {
+      for (const requestNumber of processedRequestNumbers) {
+        // Check for duplicates
+        const recentNotes = await ctx.db
+          .query("request_notes")
+          .withIndex("by_request_number", (q) => q.eq("requestNumber", requestNumber))
+          .order("desc")
+          .take(1);
 
-    if (errors.length > 0) {
-      throw new Error(`Some requests failed to update: ${errors.join(", ")}`);
+        const content = `Rejected (Bulk): ${args.rejectionReason}`;
+        const isDuplicate = recentNotes.length > 0 &&
+          recentNotes[0].content === content &&
+          (now - recentNotes[0].createdAt) < 5000;
+
+        if (!isDuplicate) {
+          await ctx.db.insert("request_notes", {
+            requestNumber: requestNumber,
+            userId: currentUser._id,
+            role: currentUser.role,
+            status: "rejected",
+            content: content,
+            createdAt: now,
+          });
+        }
+      }
     }
 
     return { success: true, updatedCount: args.requestIds.length };
@@ -1046,6 +1195,7 @@ export const bulkUpdateRequestStatus = mutation({
 export const sendDraftRequest = mutation({
   args: {
     requestNumber: v.string(), // Draft request number (DRAFT-001, etc.)
+    orderNote: v.optional(v.string()), // Optional order-level note
   },
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUser(ctx);
@@ -1073,7 +1223,7 @@ export const sendDraftRequest = mutation({
 
     // Generate next sequential request number (only count non-draft requests)
     const allRequests = await ctx.db.query("requests").collect();
-    
+
     let maxNumber = 0;
     for (const request of allRequests) {
       // Only count non-draft requests (001, 002, etc.)
@@ -1085,7 +1235,7 @@ export const sendDraftRequest = mutation({
         }
       }
     }
-    
+
     // Generate next sequential number
     const nextNumber = maxNumber + 1;
     const newRequestNumber = nextNumber.toString().padStart(3, "0");
@@ -1098,6 +1248,39 @@ export const sendDraftRequest = mutation({
         requestNumber: newRequestNumber,
         status: "pending",
         updatedAt: now,
+      });
+    }
+
+    // Migrate existing notes from draft to new request number
+    const draftNotes = await ctx.db
+      .query("request_notes")
+      .withIndex("by_request_number", (q) => q.eq("requestNumber", args.requestNumber))
+      .collect();
+
+    for (const note of draftNotes) {
+      await ctx.db.insert("request_notes", {
+        requestNumber: newRequestNumber,
+        userId: note.userId,
+        role: note.role,
+        status: note.status,
+        content: note.content,
+        createdAt: note.createdAt,
+      });
+    }
+
+    // Create order note if provided and not a duplicate of the latest draft note
+    // Sort draft notes to find the latest one (descending by createdAt)
+    const latestDraftNote = draftNotes.sort((a, b) => b.createdAt - a.createdAt)[0];
+    const isDuplicate = latestDraftNote && args.orderNote && latestDraftNote.content === args.orderNote;
+
+    if (args.orderNote && args.orderNote.trim().length > 0 && !isDuplicate) {
+      await ctx.db.insert("request_notes", {
+        requestNumber: newRequestNumber,
+        userId: currentUser._id,
+        role: currentUser.role,
+        status: "pending",
+        content: args.orderNote,
+        createdAt: now,
       });
     }
 
@@ -1171,6 +1354,7 @@ export const updateDraftRequest = mutation({
         ),
       })
     ),
+    orderNote: v.optional(v.string()), // Added orderNote
   },
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUser(ctx);
@@ -1245,6 +1429,28 @@ export const updateDraftRequest = mutation({
       requestIds.push(requestId);
     }
 
+    // Create order note if provided
+    if (args.orderNote && args.orderNote.trim().length > 0) {
+      // Check for duplicate of latest note to prevent spamming history
+      const existingNotes = await ctx.db
+        .query("request_notes")
+        .withIndex("by_request_number", (q) => q.eq("requestNumber", args.requestNumber))
+        .collect();
+
+      const latestNote = existingNotes.sort((a, b) => b.createdAt - a.createdAt)[0];
+
+      if (!latestNote || latestNote.content !== args.orderNote) {
+        await ctx.db.insert("request_notes", {
+          requestNumber: args.requestNumber,
+          userId: currentUser._id,
+          role: currentUser.role,
+          status: "draft",
+          content: args.orderNote,
+          createdAt: now,
+        });
+      }
+    }
+
     return { requestIds, requestNumber: args.requestNumber };
   },
 });
@@ -1286,7 +1492,7 @@ export const markDelivery = mutation({
       .query("inventory")
       .withIndex("by_is_active", (q) => q.eq("isActive", true))
       .collect();
-    
+
     const inventoryItem = allInventoryItems.find(
       (item) => item.itemName.toLowerCase() === request.itemName.toLowerCase()
     );
@@ -1439,7 +1645,7 @@ export const updatePurchaseRequestStatus = mutation({
 
     // Validate status transitions
     const validTransitions: Record<string, string[]> = {
-      ready_for_cc: ["cc_pending"],
+      ready_for_cc: ["cc_pending", "ready_for_po", "delivery_stage"],
       cc_pending: ["cc_approved", "ready_for_cc"], // Can go back if needed
       cc_approved: ["ready_for_po"],
       ready_for_po: ["delivery_stage"],
@@ -1448,7 +1654,7 @@ export const updatePurchaseRequestStatus = mutation({
 
     const currentStatus = request.status;
     const allowedStatuses = validTransitions[currentStatus] || [];
-    
+
     if (!allowedStatuses.includes(args.status)) {
       throw new Error(`Invalid status transition from ${currentStatus} to ${args.status}`);
     }

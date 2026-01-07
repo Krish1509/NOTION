@@ -21,12 +21,15 @@ import { SiteInfoDialog } from "@/components/requests/site-info-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Clock, FileText, ShoppingCart, Truck, Search, Filter, LayoutGrid, Table as TableIcon, Eye, AlertCircle, FileText as FileTextIcon, Edit } from "lucide-react";
+import { Clock, FileText, ShoppingCart, Truck, Search, Filter, LayoutGrid, Table as TableIcon, Eye, AlertCircle, FileText as FileTextIcon, Edit, Zap } from "lucide-react";
 import { RequestCardWithCC } from "./request-card-with-cc";
 import { PurchaseRequestGroupCard } from "./purchase-request-group-card";
 import { CostComparisonDialog } from "./cost-comparison-dialog";
 import { CompactImageGallery } from "@/components/ui/image-gallery";
 import { cn } from "@/lib/utils";
+import { DirectPODialog } from "./direct-po-dialog";
+import { useViewMode } from "@/hooks/use-view-mode";
+import { RequestsTable } from "@/components/requests/requests-table";
 
 // Enhanced status configuration with better visual hierarchy
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any; color: string }> = {
@@ -80,13 +83,14 @@ export function PurchaseRequestsContent() {
   const [selectedRequestId, setSelectedRequestId] = useState<Id<"requests"> | null>(null);
   const [ccRequestId, setCCRequestId] = useState<Id<"requests"> | null>(null);
   const [activeTab, setActiveTab] = useState<string>("ready_for_po");
-  const [viewMode, setViewMode] = useState<"card" | "table">("card");
+  const { viewMode, toggleViewMode } = useViewMode();
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedItemName, setSelectedItemName] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<Id<"sites"> | null>(null);
-  
+  const [showDirectPODialog, setShowDirectPODialog] = useState(false);
+
   const allRequests = useQuery(api.requests.getPurchaseRequestsByStatus, {});
-  
+
   // Enhanced filtering with search - group by requestNumber like manager pages
   const filteredRequestGroups = useMemo(() => {
     if (!allRequests) return [];
@@ -194,6 +198,26 @@ export function PurchaseRequestsContent() {
     };
   }, [allRequests]);
 
+  const directToPO = useMutation(api.requests.directToPO);
+  const updatePurchaseStatus = useMutation(api.requests.updatePurchaseRequestStatus);
+
+  const handleDirectPO = async (requestId: Id<"requests">) => {
+    try {
+      await directToPO({ requestId });
+      toast.success("Request moved to Ready for PO");
+    } catch (error) {
+      toast.error("Failed to update status");
+    }
+  };
+
+  const handleDirectDelivery = async (requestId: Id<"requests">) => {
+    try {
+      await updatePurchaseStatus({ requestId, status: "delivery_stage" });
+      toast.success("Request moved to Delivery Stage");
+    } catch (error) {
+      toast.error("Failed to update status");
+    }
+  };
 
   return (
     <>
@@ -206,6 +230,13 @@ export function PurchaseRequestsContent() {
               Manage and process material purchase requests
             </p>
           </div>
+          <Button
+            onClick={() => setShowDirectPODialog(true)}
+            className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            Create Direct PO
+          </Button>
         </div>
 
         {/* Enhanced Stages - Card-based approach */}
@@ -265,27 +296,20 @@ export function PurchaseRequestsContent() {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-muted-foreground hidden sm:inline">View:</span>
-                  <div className="flex rounded-lg border p-1">
-                    <Button
-                      variant={viewMode === "card" ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => setViewMode("card")}
-                      className="h-8 px-3"
-                    >
-                      <LayoutGrid className="h-4 w-4 mr-2" />
-                      Cards
-                    </Button>
-                    <Button
-                      variant={viewMode === "table" ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => setViewMode("table")}
-                      className="h-8 px-3"
-                    >
-                      <TableIcon className="h-4 w-4 mr-2" />
-                      Table
-                    </Button>
-                  </div>
+                  <span className="text-sm font-medium text-muted-foreground hidden sm:inline mr-2">View:</span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={toggleViewMode}
+                    className="h-8 w-8"
+                    title={viewMode === "card" ? "Show Table" : "Show Cards"}
+                  >
+                    {viewMode === "card" ? (
+                      <TableIcon className="h-4 w-4" />
+                    ) : (
+                      <LayoutGrid className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               </div>
               <div className="flex items-center justify-between">
@@ -317,6 +341,16 @@ export function PurchaseRequestsContent() {
               </div>
             </CardContent>
           </Card>
+        ) : viewMode === "table" ? (
+          <RequestsTable
+            requests={filteredRequestGroups.flatMap(group => group.items)}
+            viewMode="table"
+            onViewDetails={setSelectedRequestId}
+            onOpenCC={(requestId, requestIds) => setCCRequestId(requestId)}
+            onDirectPO={handleDirectPO}
+            onDirectDelivery={handleDirectDelivery}
+            showCreator={true}
+          />
         ) : (
           <div className="space-y-4">
             {filteredRequestGroups.map((group) => {
@@ -348,6 +382,8 @@ export function PurchaseRequestsContent() {
                   onSiteClick={setSelectedSiteId}
                   onItemClick={setSelectedItemName}
                   canEditVendor={true}
+                  onDirectPO={handleDirectPO}
+                  onDirectDelivery={handleDirectDelivery}
                 />
               );
             })}
@@ -390,6 +426,11 @@ export function PurchaseRequestsContent() {
           if (!open) setSelectedSiteId(null);
         }}
         siteId={selectedSiteId}
+      />
+
+      <DirectPODialog
+        open={showDirectPODialog}
+        onOpenChange={setShowDirectPODialog}
       />
     </>
   );

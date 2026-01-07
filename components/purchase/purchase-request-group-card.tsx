@@ -6,7 +6,7 @@
  * Matches the manager page layout exactly for consistency.
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertCircle, Eye, FileText, MapPin, Search, X, Sparkles, Building, Plus, Save, Edit, Check, Truck } from "lucide-react";
+import { AlertCircle, Eye, FileText, MapPin, Search, X, Sparkles, Building, Plus, Save, Edit, Check, Truck, Package, PackageX, NotebookPen, ShoppingCart } from "lucide-react";
 import { CompactImageGallery } from "@/components/ui/image-gallery";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { NotesTimelineDialog } from "@/components/requests/notes-timeline-dialog";
 import type { Id } from "@/convex/_generated/dataModel";
 
 interface RequestItem {
@@ -56,6 +57,8 @@ interface RequestItem {
     amount?: number;
     unit?: string;
   }>;
+  notesCount?: number;
+  directAction?: "po" | "delivery";
 }
 
 interface Vendor {
@@ -90,6 +93,8 @@ interface PurchaseRequestGroupCardProps {
   onSiteClick?: (siteId: Id<"sites">) => void;
   onItemClick?: (itemName: string) => void;
   canEditVendor?: boolean;
+  onDirectPO?: (requestId: Id<"requests">) => void;
+  onDirectDelivery?: (requestId: Id<"requests">) => void;
 }
 
 // Helper function to collect photos
@@ -290,8 +295,8 @@ const generateQuantitySuggestions = (input: string, itemUnit?: string): string[]
       const smartUnits = numberValue < 100
         ? ["g", "gm", "ml", "mm", "cm", "nos", "pcs", "pieces", "units"]
         : numberValue < 1000
-        ? ["kg", "l", "m", "bags", "boxes", "bundles", "rolls", "sheets"]
-        : ["cartons", "boxes", "bags", "ton", "kg", "cft", "cum", "sqft", "sqm"];
+          ? ["kg", "l", "m", "bags", "boxes", "bundles", "rolls", "sheets"]
+          : ["cartons", "boxes", "bags", "ton", "kg", "cft", "cum", "sqft", "sqm"];
       return smartUnits.map(unit => `${number} ${unit}`);
     } else {
       // Unit part exists - find matching units
@@ -351,7 +356,9 @@ export function PurchaseRequestGroupCard({
   onOpenCC,
   onSiteClick,
   onItemClick,
-  canEditVendor = true
+  canEditVendor = true,
+  onDirectPO,
+  onDirectDelivery
 }: PurchaseRequestGroupCardProps) {
   const StatusIcon = statusInfo.icon;
 
@@ -359,9 +366,92 @@ export function PurchaseRequestGroupCard({
   const vendors = useQuery(api.vendors.getAllVendors);
   const updateRequestDetails = useMutation(api.requests.updateRequestDetails);
 
+  // Collect all unique item names from items
+  const uniqueItemNames = useMemo(() => {
+    const names = new Set<string>();
+    items.forEach((item) => names.add(item.itemName));
+    return Array.from(names);
+  }, [items]);
+
+  // Query inventory status for all items
+  const inventoryStatus = useQuery(
+    api.inventory.getInventoryStatusForItems,
+    uniqueItemNames.length > 0 ? { itemNames: uniqueItemNames } : "skip"
+  );
+
+  // Helper function to get inventory status badge for an item
+  const getInventoryStatusBadge = (itemName: string, requestedQuantity: number, unit: string) => {
+    if (!inventoryStatus) return null;
+
+    const status = inventoryStatus[itemName];
+    if (!status) return null;
+
+    if (status.status === "new_item") {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800 text-[10px] px-1.5 py-0.5 h-5 gap-1"
+        >
+          <Sparkles className="h-3 w-3" />
+          New Item
+        </Badge>
+      );
+    }
+
+    if (status.status === "out_of_stock") {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800 text-[10px] px-1.5 py-0.5 h-5 gap-1"
+        >
+          <PackageX className="h-3 w-3" />
+          Out of Stock
+        </Badge>
+      );
+    }
+
+    // In stock - show remaining quantity
+    const stockAvailable = status.centralStock;
+    const remaining = stockAvailable - requestedQuantity;
+    const stockUnit = status.unit || unit;
+
+    // Determine color based on how much stock remains
+    const isLowStock = remaining < 0 || (stockAvailable > 0 && remaining < stockAvailable * 0.2);
+    const isSufficientStock = remaining >= 0;
+
+    if (!isSufficientStock) {
+      // Requested more than available
+      return (
+        <Badge
+          variant="outline"
+          className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 text-[10px] px-1.5 py-0.5 h-5 gap-1"
+        >
+          <Package className="h-3 w-3" />
+          {stockAvailable}/{requestedQuantity} {stockUnit}
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge
+        variant="outline"
+        className={cn(
+          "text-[10px] px-1.5 py-0.5 h-5 gap-1",
+          isLowStock
+            ? "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-800"
+            : "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800"
+        )}
+      >
+        <Package className="h-3 w-3" />
+        {stockAvailable} {stockUnit}
+      </Badge>
+    );
+  };
+
   // State for vendor editing
   const [editingItemId, setEditingItemId] = useState<Id<"requests"> | null>(null);
   const [itemsWithVendor, setItemsWithVendor] = useState<ItemWithVendor[]>([]);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [vendorSearchQuery, setVendorSearchQuery] = useState("");
 
   // Initialize items with vendor data
@@ -496,11 +586,27 @@ export function PurchaseRequestGroupCard({
             </div>
           </div>
         </div>
-        {hasMultipleItems && (
-          <Badge variant="secondary" className="text-xs px-1.5 py-0.5 h-5 flex-shrink-0">
-            {items.length} items
-          </Badge>
-        )}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsNotesOpen(true)}
+            className="relative h-7 w-7 p-0 rounded-full hover:bg-muted"
+            title="View Notes"
+          >
+            <NotebookPen className="h-4 w-4 text-muted-foreground" />
+            {firstItem.notesCount !== undefined && firstItem.notesCount > 0 && (
+              <span className="absolute top-0 right-0 flex h-3 w-3 items-center justify-center rounded-full bg-destructive text-[8px] text-destructive-foreground">
+                {firstItem.notesCount}
+              </span>
+            )}
+          </Button>
+          {hasMultipleItems && (
+            <Badge variant="secondary" className="text-xs px-1.5 py-0.5 h-5 flex-shrink-0">
+              {items.length} items
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Items List */}
@@ -551,6 +657,7 @@ export function PurchaseRequestGroupCard({
                         {item.specsBrand && (
                           <span className="text-primary">• {item.specsBrand}</span>
                         )}
+                        {getInventoryStatusBadge(item.itemName, item.quantity, item.unit)}
                       </div>
                     </div>
                   </div>
@@ -780,15 +887,40 @@ export function PurchaseRequestGroupCard({
                   {item.status !== 'approved' && item.status !== 'rejected' && item.status !== 'cc_approved' && item.status !== 'cc_rejected' && getStatusBadge(item.status)}
                 </div>
                 <div className="flex items-center gap-2">
-                  {item.status === "ready_for_cc" && onOpenCC && (
-                    <Button
-                      size="sm"
-                      onClick={() => onOpenCC(item._id)}
-                      className="text-xs h-7 px-2"
-                    >
-                      <FileText className="h-3 w-3 mr-1" />
-                      CC
-                    </Button>
+                  {/* Per-item action button */}
+                  {(item.status === "ready_for_cc" || item.status === "cc_pending") && (
+                    <>
+                      {item.directAction === "po" && onDirectPO ? (
+                        <Button
+                          size="sm"
+                          onClick={() => onDirectPO?.(item._id)}
+                          className="text-xs h-7 px-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+                          variant="outline"
+                        >
+                          <ShoppingCart className="h-3 w-3 mr-1" />
+                          Direct PO
+                        </Button>
+                      ) : item.directAction === "delivery" && onDirectDelivery ? (
+                        <Button
+                          size="sm"
+                          onClick={() => onDirectDelivery?.(item._id)}
+                          className="text-xs h-7 px-2 bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200"
+                          variant="outline"
+                        >
+                          <Truck className="h-3 w-3 mr-1" />
+                          Delivery
+                        </Button>
+                      ) : onOpenCC ? (
+                        <Button
+                          size="sm"
+                          onClick={() => onOpenCC?.(item._id)}
+                          className="text-xs h-7 px-2"
+                        >
+                          <FileText className="h-3 w-3 mr-1" />
+                          CC
+                        </Button>
+                      ) : null}
+                    </>
                   )}
                   <Button
                     variant="outline"
@@ -805,6 +937,12 @@ export function PurchaseRequestGroupCard({
           );
         })}
       </div>
-    </div>
+      {/* Notes Timeline Dialog */}
+      <NotesTimelineDialog
+        requestNumber={requestNumber}
+        open={isNotesOpen}
+        onOpenChange={setIsNotesOpen}
+      />
+    </div >
   );
 }

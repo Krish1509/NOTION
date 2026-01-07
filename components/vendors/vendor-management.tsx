@@ -25,6 +25,7 @@ import { VendorFormDialog } from "./vendor-form-dialog";
 import { VendorTable } from "./vendor-table";
 import { useUserRole } from "@/hooks/use-user-role";
 import { ROLES } from "@/lib/auth/roles";
+import { useViewMode } from "@/hooks/use-view-mode";
 
 type ViewMode = "table" | "card";
 type SortOption = "newest" | "oldest" | "name_asc" | "name_desc";
@@ -37,25 +38,15 @@ export function VendorManagement({ showTableOnly = false }: VendorManagementProp
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("newest");
-  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const { viewMode, toggleViewMode } = useViewMode("vendor-view-mode");
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { isLoaded, isSignedIn } = useAuth();
   const userRole = useUserRole();
-  
+
   const canCreate = userRole === ROLES.PURCHASE_OFFICER;
 
-  // Auto-detect mobile and switch to card view
-  useEffect(() => {
-    const checkMobile = () => {
-      if (window.innerWidth < 768) {
-        setViewMode("card");
-      }
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+
 
   // Only fetch vendors if user is signed in
   const vendors = useQuery(
@@ -180,29 +171,26 @@ export function VendorManagement({ showTableOnly = false }: VendorManagementProp
           {/* View mode toggle */}
           <div className="flex gap-1 ml-auto">
             <Button
-              variant={viewMode === "table" ? "default" : "outline"}
+              variant="outline"
               size="icon"
-              onClick={() => setViewMode("table")}
-              className="h-9 w-9"
+              onClick={toggleViewMode}
+              className="h-9 w-9 flex-shrink-0"
+              title={viewMode === "card" ? "Show Table" : "Show Cards"}
             >
-              <Table2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === "card" ? "default" : "outline"}
-              size="icon"
-              onClick={() => setViewMode("card")}
-              className="h-9 w-9"
-            >
-              <LayoutGrid className="h-4 w-4" />
+              {viewMode === "card" ? (
+                <Table2 className="h-4 w-4" />
+              ) : (
+                <LayoutGrid className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>
       </div>
 
       {/* Vendor table/cards */}
-      <VendorTable 
+      <VendorTable
         key={refreshKey}
-        vendors={filteredAndSortedVendors ?? undefined} 
+        vendors={filteredAndSortedVendors ?? undefined}
         viewMode={viewMode}
       />
 

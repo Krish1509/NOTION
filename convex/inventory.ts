@@ -203,6 +203,80 @@ export const getInventoryByVendor = query({
   },
 });
 
+/**
+ * Get inventory status for multiple items
+ * Returns whether each item exists in inventory, its stock level, and status
+ */
+export const getInventoryStatusForItems = query({
+  args: { itemNames: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return {};
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", userId))
+      .unique();
+
+    if (!currentUser) return {};
+
+    // Get all active inventory items
+    const allInventory = await ctx.db
+      .query("inventory")
+      .withIndex("by_is_active", (q) => q.eq("isActive", true))
+      .collect();
+
+    // Create a map for quick lookup (case-insensitive)
+    const inventoryMap = new Map<string, {
+      itemName: string;
+      centralStock: number;
+      unit: string;
+    }>();
+
+    allInventory.forEach((item) => {
+      inventoryMap.set(item.itemName.toLowerCase(), {
+        itemName: item.itemName,
+        centralStock: item.centralStock || 0,
+        unit: item.unit || "",
+      });
+    });
+
+    // Build result object
+    const result: Record<string, {
+      exists: boolean;
+      itemName: string;
+      centralStock: number;
+      unit: string;
+      status: "in_stock" | "out_of_stock" | "new_item";
+    }> = {};
+
+    args.itemNames.forEach((name) => {
+      const inventoryItem = inventoryMap.get(name.toLowerCase());
+
+      if (inventoryItem) {
+        const stock = inventoryItem.centralStock;
+        result[name] = {
+          exists: true,
+          itemName: inventoryItem.itemName,
+          centralStock: stock,
+          unit: inventoryItem.unit,
+          status: stock > 0 ? "in_stock" : "out_of_stock",
+        };
+      } else {
+        result[name] = {
+          exists: false,
+          itemName: name,
+          centralStock: 0,
+          unit: "",
+          status: "new_item",
+        };
+      }
+    });
+
+    return result;
+  },
+});
+
 // ============================================================================
 // Mutations
 // ============================================================================
@@ -283,8 +357,8 @@ export const updateInventoryItem = mutation({
     }
 
     // Support both old vendorId and new vendorIds
-    const vendorIds = args.vendorIds !== undefined 
-      ? args.vendorIds 
+    const vendorIds = args.vendorIds !== undefined
+      ? args.vendorIds
       : (args.vendorId ? [args.vendorId] : []);
 
     // Validate vendors exist if provided
@@ -465,3 +539,97 @@ export const removeImageFromInventory = mutation({
   },
 });
 
+/**
+ * Deduct stock from inventory item (Purchase Officer only)
+ * Used for direct delivery from inventory
+ */
+export const deductInventoryStock = mutation({
+  args: {
+    itemId: v.id("inventory"),
+    quantity: v.number(),
+    reason: v.optional(v.string()), // e.g., "Direct delivery for request REQ-001"
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUser(ctx);
+
+    // Check if user is a Purchase Officer
+    if (currentUser.role !== "purchase_officer") {
+      throw new Error("Unauthorized: Only Purchase Officers can deduct inventory stock");
+    }
+
+    if (args.quantity <= 0) {
+      throw new Error("Quantity must be greater than 0");
+    }
+
+    const item = await ctx.db.get(args.itemId);
+    if (!item || !item.isActive) {
+      throw new Error("Inventory item not found");
+    }
+
+    const currentStock = item.centralStock || 0;
+    if (currentStock < args.quantity) {
+      throw new Error(`Insufficient stock. Available: ${currentStock}, Requested: ${args.quantity}`);
+    }
+
+    const newStock = currentStock - args.quantity;
+
+    await ctx.db.patch(args.itemId, {
+      centralStock: newStock,
+      updatedAt: Date.now(),
+    });
+
+    return { itemId: args.itemId, previousStock: currentStock, newStock, deducted: args.quantity };
+  },
+});
+
+/**
+ * Deduct stock from inventory item by item name (Purchase Officer only)
+ * Used for direct delivery from inventory when we have item name instead of ID
+ */
+export const deductInventoryStockByName = mutation({
+  args: {
+    itemName: v.string(),
+    quantity: v.number(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUser(ctx);
+
+    // Check if user is a Purchase Officer
+    if (currentUser.role !== "purchase_officer") {
+      throw new Error("Unauthorized: Only Purchase Officers can deduct inventory stock");
+    }
+
+    if (args.quantity <= 0) {
+      throw new Error("Quantity must be greater than 0");
+    }
+
+    // Find the inventory item by name (case-insensitive)
+    const items = await ctx.db
+      .query("inventory")
+      .withIndex("by_is_active", (q) => q.eq("isActive", true))
+      .collect();
+
+    const item = items.find(
+      (i) => i.itemName.toLowerCase() === args.itemName.toLowerCase()
+    );
+
+    if (!item) {
+      throw new Error(`Inventory item not found: ${args.itemName}`);
+    }
+
+    const currentStock = item.centralStock || 0;
+    if (currentStock < args.quantity) {
+      throw new Error(`Insufficient stock. Available: ${currentStock}, Requested: ${args.quantity}`);
+    }
+
+    const newStock = currentStock - args.quantity;
+
+    await ctx.db.patch(item._id, {
+      centralStock: newStock,
+      updatedAt: Date.now(),
+    });
+
+    return { itemId: item._id, previousStock: currentStock, newStock, deducted: args.quantity };
+  },
+});

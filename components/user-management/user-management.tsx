@@ -24,6 +24,7 @@ import { Plus, Search, LayoutGrid, Table2, RefreshCw } from "lucide-react";
 import { CreateUserDialog } from "./create-user-dialog";
 import { UserTable } from "./user-table";
 import { ROLES, ROLE_LABELS, Role } from "@/lib/auth/roles";
+import { useViewMode } from "@/hooks/use-view-mode";
 import { Doc } from "@/convex/_generated/dataModel";
 
 type ViewMode = "table" | "card";
@@ -35,11 +36,11 @@ export function UserManagement() {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<SortOption>("newest");
-  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const { viewMode, toggleViewMode } = useViewMode("user-view-mode");
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { isLoaded, isSignedIn } = useAuth();
-  
+
   // Only fetch users if user is signed in
   const users = useQuery(
     api.users.getAllUsers,
@@ -188,29 +189,26 @@ export function UserManagement() {
           {/* View mode toggle */}
           <div className="flex gap-1 ml-auto">
             <Button
-              variant={viewMode === "table" ? "default" : "outline"}
+              variant="outline"
               size="icon"
-              onClick={() => setViewMode("table")}
-              className="h-9 w-9"
+              onClick={toggleViewMode}
+              className="h-9 w-9 flex-shrink-0"
+              title={viewMode === "card" ? "Show Table" : "Show Cards"}
             >
-              <Table2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === "card" ? "default" : "outline"}
-              size="icon"
-              onClick={() => setViewMode("card")}
-              className="h-9 w-9"
-            >
-              <LayoutGrid className="h-4 w-4" />
+              {viewMode === "card" ? (
+                <Table2 className="h-4 w-4" />
+              ) : (
+                <LayoutGrid className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>
       </div>
 
       {/* User table/cards */}
-      <UserTable 
+      <UserTable
         key={refreshKey}
-        users={filteredAndSortedUsers ?? undefined} 
+        users={filteredAndSortedUsers ?? undefined}
         viewMode={viewMode}
       />
 

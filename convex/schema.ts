@@ -74,6 +74,7 @@ export default defineSchema({
     rejectionReason: v.optional(v.string()),
     deliveryMarkedAt: v.optional(v.number()),
     notes: v.optional(v.string()),
+    directAction: v.optional(v.union(v.literal("delivery"), v.literal("po"))), // Flag for direct delivery/PO without CC
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -88,15 +89,16 @@ export default defineSchema({
   // ============================================================================
   purchaseOrders: defineTable({
     poNumber: v.string(), // Auto-generated unique identifier
-    requestId: v.id("requests"), // Linked request
+    requestId: v.optional(v.id("requests")), // Linked request (optional for Direct PO)
+    deliverySiteId: v.optional(v.id("sites")), // Delivery site (for Direct PO)
     vendorId: v.id("vendors"),
     createdBy: v.id("users"), // Purchase Officer
     itemDescription: v.string(), // Item description
-        quantity: v.number(),
-        unit: v.string(),
+    quantity: v.number(),
+    unit: v.string(),
     hsnSacCode: v.optional(v.string()), // HSN/SAC Code
     unitRate: v.number(),
-    discountPercent: v.number(), // Discount percentage
+    discountPercent: v.optional(v.number()), // Discount percentage (optional for Direct PO)
     gstTaxRate: v.number(), // GST Tax Rate percentage
     totalAmount: v.number(), // Total amount after discount and GST
     notes: v.optional(v.string()),
@@ -105,6 +107,8 @@ export default defineSchema({
       v.literal("delivered"),
       v.literal("cancelled")
     ),
+    isDirect: v.optional(v.boolean()), // Flag to indicate Direct PO (bypasses approval)
+    validTill: v.optional(v.number()), // PO expiry date (for Direct PO)
     expectedDeliveryDate: v.optional(v.number()),
     actualDeliveryDate: v.optional(v.number()),
     createdAt: v.number(),
@@ -115,7 +119,9 @@ export default defineSchema({
     .index("by_vendor_id", ["vendorId"])
     .index("by_created_by", ["createdBy"])
     .index("by_status", ["status"])
-    .index("by_created_at", ["createdAt"]),
+    .index("by_created_at", ["createdAt"])
+    .index("by_is_direct", ["isDirect"])
+    .index("by_delivery_site", ["deliverySiteId"]),
 
   // ============================================================================
   // Vendors Table
@@ -274,6 +280,8 @@ export default defineSchema({
         unitPrice: v.number(), // Unit price in ₹
         amount: v.optional(v.number()), // Quote amount/quantity
         unit: v.optional(v.string()), // Unit of measurement
+        discountPercent: v.optional(v.number()), // Optional discount percentage
+        gstPercent: v.optional(v.number()), // Optional GST percentage
       })
     ),
     selectedVendorId: v.optional(v.id("vendors")), // Selected by manager
@@ -326,6 +334,19 @@ export default defineSchema({
     .index("by_po_id", ["poId"])
     .index("by_request_id", ["requestId"])
     .index("by_status", ["status"])
+    .index("by_created_at", ["createdAt"]),
+  // ============================================================================
+  // Request Notes Table
+  // ============================================================================
+  request_notes: defineTable({
+    requestNumber: v.string(), // Links to the group of requests
+    userId: v.id("users"), // The author of the note
+    role: v.string(), // Author's role at the time (e.g. site_engineer, manager)
+    status: v.optional(v.string()), // Request status at the time of note (e.g. draft, pending)
+    content: v.string(), // The note content
+    createdAt: v.number(), // Timestamp
+  })
+    .index("by_request_number", ["requestNumber"])
     .index("by_created_at", ["createdAt"]),
 });
 

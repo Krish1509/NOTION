@@ -24,12 +24,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, CheckCircle2, Send, X, MapPin, Calendar, Package, AlertTriangle, Search, LayoutGrid, Table2 } from "lucide-react";
+import { Plus, CheckCircle2, Send, X, MapPin, Calendar, Package, AlertTriangle, Search, Filter, LayoutGrid, Table2, Check } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { normalizeSearchQuery, matchesSearchQuery } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
+import { cn, normalizeSearchQuery, matchesSearchQuery } from "@/lib/utils";
+import { useViewMode } from "@/hooks/use-view-mode";
 import type { Id } from "@/convex/_generated/dataModel";
 
 // Enhanced precise search function with priority for exact matches
@@ -246,10 +249,10 @@ export function SiteRequestsContent() {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [draftToSend, setDraftToSend] = useState<string | null>(null);
   const [newlySentRequestNumbers, setNewlySentRequestNumbers] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<"card" | "table">("card");
+  const { viewMode, toggleViewMode } = useViewMode();
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("approved");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const previousRequestsRef = useRef<typeof allRequests>(undefined);
 
   // Debounce search query for better performance
@@ -282,7 +285,7 @@ export function SiteRequestsContent() {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [searchQuery]);
-  
+
   const allRequests = useQuery(api.requests.getUserRequests);
   const draftDetails = useQuery(
     api.requests.getRequestsByRequestNumber,
@@ -308,12 +311,12 @@ export function SiteRequestsContent() {
       if (newPending.length > 0) {
         const newNumbers = new Set(newPending.map((r) => r.requestNumber));
         setNewlySentRequestNumbers(newNumbers);
-        
+
         // Scroll to top after a short delay
         setTimeout(() => {
           window.scrollTo({ top: 0, behavior: "smooth" });
         }, 200);
-        
+
         // Clear animation after 3 seconds
         setTimeout(() => {
           setNewlySentRequestNumbers(new Set());
@@ -325,7 +328,7 @@ export function SiteRequestsContent() {
 
   // Separate new requests from history (include drafts in new)
   // Sort by updatedAt descending (newest first) - newly sent requests will be at top
-  const newRequests = (allRequests?.filter((r) => 
+  const newRequests = (allRequests?.filter((r) =>
     ["draft", "pending", "ready_for_cc", "cc_pending", "ready_for_po", "delivery_stage"].includes(r.status)
   ) || []).sort((a, b) => {
     // Non-drafts first (pending, etc.), sorted by updatedAt (newest first)
@@ -337,8 +340,8 @@ export function SiteRequestsContent() {
     // Both are drafts, sort by createdAt (newest first)
     return b.createdAt - a.createdAt;
   });
-  
-  const historyRequests = allRequests?.filter((r) => 
+
+  const historyRequests = allRequests?.filter((r) =>
     ["approved", "rejected", "delivered"].includes(r.status)
   ) || [];
 
@@ -354,7 +357,7 @@ export function SiteRequestsContent() {
 
   const confirmDeleteDraft = async () => {
     if (!draftToDelete) return;
-    
+
     try {
       await deleteDraft({ requestNumber: draftToDelete });
       toast.success("Draft deleted successfully");
@@ -372,13 +375,13 @@ export function SiteRequestsContent() {
 
   const confirmSendDraft = async () => {
     if (!draftToSend) return;
-    
+
     try {
       const result = await sendDraft({ requestNumber: draftToSend });
       // Mark as newly sent for animation
       setNewlySentRequestNumbers(new Set([result.requestNumber]));
       toast.success(`Draft sent successfully! Request #${result.requestNumber} has been created.`);
-      
+
       // Close confirmation dialog
       setSendConfirmOpen(false);
       setDraftToSend(null);
@@ -387,7 +390,7 @@ export function SiteRequestsContent() {
       setTimeout(() => {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }, 300);
-      
+
       // Clear animation after 3 seconds
       setTimeout(() => {
         setNewlySentRequestNumbers(new Set());
@@ -403,9 +406,21 @@ export function SiteRequestsContent() {
   const filterRequests = (requestsList: typeof newRequests) => {
     let filtered = requestsList;
 
-    // Filter by status
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((r) => r.status === statusFilter);
+    // Filter by status (Multi-select)
+    if (statusFilter.length > 0) {
+      filtered = filtered.filter((r) => {
+        // Check if request status matches any selected filter group
+        return statusFilter.some(filterGroup => {
+          if (filterGroup === "processing") {
+            return ["ready_for_cc", "cc_pending", "cc_approved", "cc_rejected", "ready_for_po"].includes(r.status);
+          }
+          if (filterGroup === "delivery_stage") {
+            return ["delivery_stage", "delivered"].includes(r.status);
+          }
+          // Direct match for draft, pending, approved, rejected
+          return r.status === filterGroup;
+        });
+      });
     }
 
     // Enhanced fuzzy search with priority on ID, order ID, and item name
@@ -471,9 +486,9 @@ export function SiteRequestsContent() {
           </div>
           <Button
             variant="outline"
-            size="sm"
-            onClick={() => setViewMode(viewMode === "card" ? "table" : "card")}
-            className="h-9 sm:h-10 px-3 flex-shrink-0"
+            size="icon"
+            onClick={toggleViewMode}
+            className="h-9 sm:h-10 w-9 sm:w-10 flex-shrink-0"
             title={`Switch to ${viewMode === "card" ? "table" : "card"} view`}
           >
             {viewMode === "card" ? (
@@ -486,79 +501,90 @@ export function SiteRequestsContent() {
 
         {/* Row 2: Status Filter and New Request */}
         <div className="flex gap-2 items-center">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-[180px] h-9 sm:h-10 text-sm">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-muted-foreground"></div>
-                  All Status
-                </div>
-              </SelectItem>
-              <SelectItem value="draft">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("draft")}`}></div>
-                  <span className={getStatusColor("draft")}>Draft</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="pending">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("pending")}`}></div>
-                  <span className={getStatusColor("pending")}>Pending</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="approved">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("approved")}`}></div>
-                  <span className={getStatusColor("approved")}>Approved</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="ready_for_cc">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("ready_for_cc")}`}></div>
-                  <span className={getStatusColor("ready_for_cc")}>Ready for CC</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="cc_pending">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("cc_pending")}`}></div>
-                  <span className={getStatusColor("cc_pending")}>CC Pending</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="cc_approved">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("cc_approved")}`}></div>
-                  <span className={getStatusColor("cc_approved")}>CC Approved</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="ready_for_po">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("ready_for_po")}`}></div>
-                  <span className={getStatusColor("ready_for_po")}>Ready for PO</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="delivery_stage">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("delivery_stage")}`}></div>
-                  <span className={getStatusColor("delivery_stage")}>Delivery Stage</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="delivered">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("delivered")}`}></div>
-                  <span className={getStatusColor("delivered")}>Delivered</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="rejected">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusDot("rejected")}`}></div>
-                  <span className={getStatusColor("rejected")}>Rejected</span>
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-full sm:w-[200px] h-9 sm:h-10 justify-between px-3 text-left font-normal text-sm">
+                <span className="truncate">
+                  {statusFilter.length === 0
+                    ? "All Statuses"
+                    : `${statusFilter.length} Selected`}
+                </span>
+                <Filter className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[220px] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Search status..." />
+                <CommandList>
+                  <CommandEmpty>No status found.</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      onSelect={() => setStatusFilter([])}
+                      className="cursor-pointer"
+                    >
+                      <div className={cn(
+                        "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
+                        statusFilter.length === 0
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "opacity-50 [&_svg]:invisible border-input"
+                      )}>
+                        <Check className={cn("h-4 w-4")} />
+                      </div>
+                      <span>All Statuses</span>
+                    </CommandItem>
+                    <CommandSeparator className="my-1" />
+                    {[
+                      { value: "draft", label: "Draft", color: "text-gray-500" },
+                      { value: "pending", label: "Pending Approval", color: "text-amber-600" },
+                      { value: "approved", label: "Approved", color: "text-emerald-600" },
+                      { value: "rejected", label: "Rejected", color: "text-red-600" },
+                      { value: "processing", label: "Processing", color: "text-indigo-600" },
+                      { value: "delivery_stage", label: "Delivery Stage", color: "text-orange-600" },
+                    ].map((option) => {
+                      const isSelected = statusFilter.includes(option.value);
+                      const getStatusDotForGroup = (groupValue: string) => {
+                        switch (groupValue) {
+                          case "draft": return "bg-gray-400";
+                          case "pending": return "bg-yellow-400";
+                          case "approved": return "bg-green-400";
+                          case "rejected": return "bg-red-400";
+                          case "processing": return "bg-indigo-400";
+                          case "delivery_stage": return "bg-orange-400";
+                          default: return "bg-muted-foreground";
+                        }
+                      }
+                      return (
+                        <CommandItem
+                          key={option.value}
+                          onSelect={() => {
+                            if (isSelected) {
+                              setStatusFilter(statusFilter.filter((s) => s !== option.value));
+                            } else {
+                              setStatusFilter([...statusFilter, option.value]);
+                            }
+                          }}
+                          className="cursor-pointer"
+                        >
+                          <div className={cn(
+                            "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
+                            isSelected
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "opacity-50 [&_svg]:invisible border-input"
+                          )}>
+                            <Check className={cn("h-4 w-4")} />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${getStatusDotForGroup(option.value)}`}></div>
+                            <span className={cn("flex-1", option.color)}>{option.label}</span>
+                          </div>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <Button
             onClick={() => setFormOpen(true)}
             size="sm"
@@ -570,7 +596,7 @@ export function SiteRequestsContent() {
         </div>
 
         {/* Bottom Row: Filters and View Toggle */}
-       
+
       </div>
 
       <RequestsTable
@@ -686,7 +712,7 @@ export function SiteRequestsContent() {
                       </div>
                     </div>
                   </div>
-                  
+
                   {draftDetails.filter((i) => i.isUrgent).length > 0 && (
                     <div className="flex items-start gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                       <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
@@ -713,7 +739,7 @@ export function SiteRequestsContent() {
             </div>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-3 pt-4">
-            <AlertDialogCancel 
+            <AlertDialogCancel
               className="w-full sm:w-auto order-2 sm:order-1 h-10 sm:h-11 text-sm font-semibold border-2"
               onClick={() => {
                 setSendConfirmOpen(false);

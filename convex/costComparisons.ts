@@ -64,14 +64,18 @@ export const getCostComparisonByRequestId = query({
         return {
           vendorId: quote.vendorId,
           unitPrice: quote.unitPrice,
+          amount: quote.amount,
+          unit: quote.unit,
+          discountPercent: quote.discountPercent,
+          gstPercent: quote.gstPercent,
           vendor: vendor
             ? {
-                _id: vendor._id,
-                companyName: vendor.companyName,
-                email: vendor.email,
-                phone: vendor.phone,
-                address: vendor.address,
-              }
+              _id: vendor._id,
+              companyName: vendor.companyName,
+              email: vendor.email,
+              phone: vendor.phone,
+              address: vendor.address,
+            }
             : null,
         };
       })
@@ -90,18 +94,18 @@ export const getCostComparisonByRequestId = query({
       vendorQuotes,
       selectedVendor: selectedVendor
         ? {
-            _id: selectedVendor._id,
-            companyName: selectedVendor.companyName,
-            email: selectedVendor.email,
-            phone: selectedVendor.phone,
-            address: selectedVendor.address,
-          }
+          _id: selectedVendor._id,
+          companyName: selectedVendor.companyName,
+          email: selectedVendor.email,
+          phone: selectedVendor.phone,
+          address: selectedVendor.address,
+        }
         : null,
       approver: approver
         ? {
-            _id: approver._id,
-            fullName: approver.fullName,
-          }
+          _id: approver._id,
+          fullName: approver.fullName,
+        }
         : null,
     };
   },
@@ -144,14 +148,18 @@ export const getPendingCostComparisons = query({
             return {
               vendorId: quote.vendorId,
               unitPrice: quote.unitPrice,
+              amount: quote.amount,
+              unit: quote.unit,
+              discountPercent: quote.discountPercent,
+              gstPercent: quote.gstPercent,
               vendor: vendor
                 ? {
-                    _id: vendor._id,
-                    companyName: vendor.companyName,
-                    email: vendor.email,
-                    phone: vendor.phone,
-                    address: vendor.address,
-                  }
+                  _id: vendor._id,
+                  companyName: vendor.companyName,
+                  email: vendor.email,
+                  phone: vendor.phone,
+                  address: vendor.address,
+                }
                 : null,
             };
           })
@@ -161,13 +169,13 @@ export const getPendingCostComparisons = query({
           ...cc,
           request: request
             ? {
-                _id: request._id,
-                requestNumber: request.requestNumber,
-                itemName: request.itemName,
-                quantity: request.quantity,
-                unit: request.unit,
-                description: request.description,
-              }
+              _id: request._id,
+              requestNumber: request.requestNumber,
+              itemName: request.itemName,
+              quantity: request.quantity,
+              unit: request.unit,
+              description: request.description,
+            }
             : null,
           vendorQuotes,
         };
@@ -194,6 +202,8 @@ export const upsertCostComparison = mutation({
         unitPrice: v.number(),
         amount: v.optional(v.number()),
         unit: v.optional(v.string()),
+        discountPercent: v.optional(v.number()),
+        gstPercent: v.optional(v.number()),
       })
     ),
     isDirectDelivery: v.boolean(),
@@ -360,6 +370,21 @@ export const reviewCostComparison = mutation({
         status: "ready_for_po",
         updatedAt: now,
       });
+
+      // Add approval note to timeline if provided
+      if (args.notes && args.notes.trim()) {
+        const request = await ctx.db.get(args.requestId);
+        if (request) {
+          await ctx.db.insert("request_notes", {
+            requestNumber: request.requestNumber,
+            userId: currentUser._id,
+            role: currentUser.role,
+            status: "cc_approved",
+            content: `CC Approved: ${args.notes.trim()}`,
+            createdAt: now,
+          });
+        }
+      }
     } else {
       // Reject - require notes
       if (!args.notes || !args.notes.trim()) {
@@ -379,6 +404,19 @@ export const reviewCostComparison = mutation({
         status: "ready_for_cc",
         updatedAt: now,
       });
+
+      // Add rejection note to timeline
+      const request = await ctx.db.get(args.requestId);
+      if (request) {
+        await ctx.db.insert("request_notes", {
+          requestNumber: request.requestNumber,
+          userId: currentUser._id,
+          role: currentUser.role,
+          status: "cc_rejected",
+          content: `CC Rejected: ${args.notes.trim()}`,
+          createdAt: now,
+        });
+      }
     }
 
     return { success: true };
@@ -397,6 +435,8 @@ export const resubmitCostComparison = mutation({
         unitPrice: v.number(),
         amount: v.optional(v.number()),
         unit: v.optional(v.string()),
+        discountPercent: v.optional(v.number()),
+        gstPercent: v.optional(v.number()),
       })
     ),
     isDirectDelivery: v.boolean(),
