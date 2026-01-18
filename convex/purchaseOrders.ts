@@ -239,6 +239,32 @@ export const getPurchaseOrderById = query({
     },
 });
 
+/**
+ * Get POs by Request ID
+ */
+export const getPOsByRequestId = query({
+    args: { requestId: v.id("requests") },
+    handler: async (ctx, args) => {
+        const currentUser = await getCurrentUser(ctx);
+
+        // Only Purchase Officers and Managers can view POs
+        if (
+            currentUser.role !== "purchase_officer" &&
+            currentUser.role !== "manager" &&
+            currentUser.role !== "site_engineer"
+        ) {
+            throw new Error("Unauthorized");
+        }
+
+        const pos = await ctx.db
+            .query("purchaseOrders")
+            .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
+            .collect();
+
+        return pos;
+    },
+});
+
 // ============================================================================
 // Mutations
 // ============================================================================
@@ -599,6 +625,19 @@ export const rejectDirectPO = mutation({
                 approvedAt: now,
                 updatedAt: now
             });
+
+            // Add rejection note to timeline
+            const request = await ctx.db.get(po.requestId);
+            if (request) {
+                await ctx.db.insert("request_notes", {
+                    requestNumber: request.requestNumber,
+                    userId: currentUser._id,
+                    role: currentUser.role,
+                    status: "sign_rejected",
+                    content: `Digitally Rejected: ${args.reason}`,
+                    createdAt: now,
+                });
+            }
         }
     },
 });
@@ -614,12 +653,17 @@ export const approveDirectPOByRequest = mutation({
             throw new Error("Unauthorized: Only Managers can approve POs");
         }
 
-        const po = await ctx.db
+        const pos = await ctx.db
             .query("purchaseOrders")
             .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
-            .unique();
+            .collect();
 
-        if (!po) throw new Error("Linked PO not found");
+        // Find the latest pending PO
+        const po = pos
+            .sort((a, b) => b._creationTime - a._creationTime)
+            .find(p => p.status === "sign_pending" || p.status === "pending_approval");
+
+        if (!po) throw new Error("Linked pending PO not found");
 
         // Status check
         if (po.status !== "sign_pending" && po.status !== "pending_approval" && po.status !== "sign_rejected") {
@@ -657,12 +701,17 @@ export const rejectDirectPOByRequest = mutation({
             throw new Error("Unauthorized: Only Managers can reject POs");
         }
 
-        const po = await ctx.db
+        const pos = await ctx.db
             .query("purchaseOrders")
             .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
-            .unique();
+            .collect();
 
-        if (!po) throw new Error("Linked PO not found");
+        // Find the latest pending PO
+        const po = pos
+            .sort((a, b) => b._creationTime - a._creationTime)
+            .find(p => p.status === "sign_pending" || p.status === "pending_approval");
+
+        if (!po) throw new Error("Linked pending PO not found");
 
         // Status check
         if (po.status !== "sign_pending" && po.status !== "pending_approval") {
@@ -688,5 +737,17 @@ export const rejectDirectPOByRequest = mutation({
             approvedAt: now,
             updatedAt: now
         });
+
+        const request = await ctx.db.get(args.requestId);
+        if (request) {
+            await ctx.db.insert("request_notes", {
+                requestNumber: request.requestNumber,
+                userId: currentUser._id,
+                role: currentUser.role,
+                status: "sign_rejected",
+                content: `Digitally Rejected: ${args.reason}`,
+                createdAt: now,
+            });
+        }
     },
 });

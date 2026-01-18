@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
 import type * as costComparisons from "../costComparisons.js";
 import type * as cron from "../cron.js";
+import type * as deliveries from "../deliveries.js";
 import type * as inventory from "../inventory.js";
 import type * as migrations from "../migrations.js";
 import type * as notes from "../notes.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   chat: typeof chat;
   costComparisons: typeof costComparisons;
   cron: typeof cron;
+  deliveries: typeof deliveries;
   inventory: typeof inventory;
   migrations: typeof migrations;
   notes: typeof notes;

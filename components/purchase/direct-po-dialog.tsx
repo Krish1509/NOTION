@@ -45,6 +45,7 @@ import { ItemInfoDialog } from "@/components/requests/item-info-dialog";
 import { LocationInfoDialog } from "@/components/locations/location-info-dialog";
 import { LocationFormDialog } from "@/components/locations/location-form-dialog";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export interface DirectPOInitialData {
     requestNumber?: string;
@@ -60,6 +61,16 @@ export interface DirectPOInitialData {
         unitPrice: number;
         hsnCode?: string;
     }[];
+    vendorDetails?: {
+        name: string;
+        email?: string;
+        phone?: string;
+        contactName?: string;
+        gstNumber?: string;
+        address?: string;
+    };
+    notes?: string;
+    validTill?: string;
 }
 
 interface DirectPODialogProps {
@@ -121,6 +132,7 @@ export function DirectPODialog({ open, onOpenChange, initialData }: DirectPODial
     const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
     const [selectedItemSuggestionIndex, setSelectedItemSuggestionIndex] = useState<number>(0);
     const [selectedSiteSuggestionIndex, setSelectedSiteSuggestionIndex] = useState<number>(0);
+    const [roundOff, setRoundOff] = useState(false);
 
     const [commonData, setCommonData] = useState({
         requestNumber: "",
@@ -213,7 +225,8 @@ export function DirectPODialog({ open, onOpenChange, initialData }: DirectPODial
                     gstNumber: selectedVendor.gstNumber || "",
                     vendorAddress: selectedVendor.address || "",
                 }));
-                setVendorSearchQuery(selectedVendor.companyName);
+                // Only set search query if not already set (e.g. by initialData)
+                setVendorSearchQuery(prev => prev || selectedVendor.companyName);
             }
         }
     }, [commonData.vendorId, vendors]);
@@ -233,18 +246,40 @@ export function DirectPODialog({ open, onOpenChange, initialData }: DirectPODial
     };
 
     const calculateGrandTotal = () => {
-        return items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+        const total = items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+        return roundOff ? Math.round(total) : total;
     };
 
     useEffect(() => {
         if (open && initialData) {
             // Populate form with initial data
-            setCommonData(prev => ({
-                ...prev,
-                requestNumber: initialData.requestNumber || "",
-                vendorId: initialData.vendorId || "",
-                deliverySite: initialData.deliverySiteId || "",
-            }));
+            setCommonData(prev => {
+                const newData = {
+                    ...prev,
+                    requestNumber: initialData.requestNumber || "",
+                    vendorId: (initialData.vendorId || "") as Id<"vendors"> | "",
+                    deliverySite: initialData.deliverySiteId || "",
+                    notes: initialData.notes || "",
+                    validTill: initialData.validTill || "",
+                };
+
+                // Pre-fill vendor details if provided (avoids waiting for vendors query)
+                if (initialData.vendorDetails) {
+                    newData.vendorName = initialData.vendorDetails?.name || prev.vendorName;
+                    newData.vendorEmail = initialData.vendorDetails?.email || prev.vendorEmail;
+                    newData.vendorPhone = initialData.vendorDetails?.phone || prev.vendorPhone;
+                    newData.contactName = initialData.vendorDetails?.contactName || prev.contactName;
+                    newData.gstNumber = initialData.vendorDetails?.gstNumber || prev.gstNumber;
+                    newData.vendorAddress = initialData.vendorDetails?.address || prev.vendorAddress;
+                    newData.notes = initialData.notes || prev.notes;
+                }
+
+                return newData;
+            });
+
+            if (initialData.vendorDetails) {
+                setVendorSearchQuery(initialData.vendorDetails.name);
+            }
 
             if (initialData.deliverySiteName) {
                 setSiteSearchQuery(initialData.deliverySiteName);
@@ -263,7 +298,7 @@ export function DirectPODialog({ open, onOpenChange, initialData }: DirectPODial
                         itemDescription: item.itemDescription,
                         description: item.description || matchingInvItem?.description || "",
                         itemSearchQuery: item.itemDescription,
-                        hsnCode: item.hsnCode || (matchingInvItem as any).hsnSacCode || "",
+                        hsnCode: item.hsnCode || (matchingInvItem as any)?.hsnSacCode || "",
                         quantity: item.quantity,
                         unit: item.unit || matchingInvItem?.unit || "pcs",
                         unitPrice: item.unitPrice,
@@ -1017,12 +1052,27 @@ export function DirectPODialog({ open, onOpenChange, initialData }: DirectPODial
                                 Add Another Item
                             </Button>
 
+
+
                             <div className="flex justify-end pt-2">
-                                <div className="bg-muted/50 p-3 rounded-lg flex gap-4 items-center">
-                                    <span className="text-sm font-semibold">Grand Total:</span>
-                                    <span className="text-xl font-bold text-primary">₹{calculateGrandTotal().toFixed(2)}</span>
+                                <div className="bg-muted/50 p-3 rounded-lg flex flex-col items-end gap-2">
+                                    <div className="flex gap-4 items-center">
+                                        <span className="text-sm font-semibold">Grand Total:</span>
+                                        <span className="text-xl font-bold text-primary">₹{calculateGrandTotal().toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id="roundOff"
+                                            checked={roundOff}
+                                            onCheckedChange={(checked) => setRoundOff(checked as boolean)}
+                                        />
+                                        <Label htmlFor="roundOff" className="text-xs font-medium cursor-pointer">
+                                            Round Off Total
+                                        </Label>
+                                    </div>
                                 </div>
                             </div>
+
                             {/* Internal Notes */}
                             <div className="space-y-1.5 pt-2">
                                 <Label htmlFor="notes" className="text-sm">Internal Notes</Label>

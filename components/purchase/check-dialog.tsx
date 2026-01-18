@@ -727,11 +727,11 @@ export function CheckDialog({
                 reason: `Direct delivery for request ${request.requestNumber}`,
             });
 
-            // If full fulfillment (all from inventory), update request to delivery stage
+            // If full fulfillment (all from inventory), update request to delivered
             if (hasSufficientInventory || quantityFromVendor === 0) {
                 await updatePurchaseRequestStatus({
                     requestId: activeRequestId,
-                    status: "delivery_stage",
+                    status: "delivered",
                 });
                 toast.success(
                     `Direct Delivery created! ${deliveryQuantity} ${request.unit || 'units'} deducted from inventory. ` +

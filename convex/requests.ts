@@ -464,8 +464,21 @@ export const getPurchaseRequestsByStatus = query({
           }
         }
 
+
+
+        // Fetch related Purchase Order linkage
+        let poId: Id<"purchaseOrders"> | null = null;
+        if (["pending_po", "ready_for_delivery", "delivery_stage", "delivered"].includes(request.status)) {
+          const po = await ctx.db
+            .query("purchaseOrders")
+            .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
+            .first();
+          if (po) poId = po._id;
+        }
+
         return {
           ...request,
+          poId,
           site: site
             ? {
               _id: site._id,
@@ -1718,7 +1731,6 @@ export const updatePurchaseRequestStatus = mutation({
       v.literal("pending_po"),
       v.literal("rejected_po"),
       v.literal("ready_for_delivery"),
-      v.literal("delivery_stage"),
       v.literal("delivered")
     ),
   },
@@ -1825,5 +1837,212 @@ export const splitAndDeliverInventory = mutation({
     });
 
     return { deliveryRequestId };
+  },
+});
+
+/**
+ * Mark request as ready for delivery (supports partial split)
+ */
+export const markReadyForDelivery = mutation({
+  args: {
+    requestId: v.id("requests"),
+    deliveryQuantity: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUser(ctx);
+    if (currentUser.role !== "purchase_officer") {
+      throw new Error("Unauthorized");
+    }
+
+    const request = await ctx.db.get(args.requestId);
+    if (!request) throw new Error("Request not found");
+
+    if (args.deliveryQuantity <= 0) {
+      throw new Error("Quantity must be greater than 0");
+    }
+
+    if (args.deliveryQuantity > request.quantity) {
+      throw new Error("Delivery quantity cannot exceed request quantity");
+    }
+
+    const now = Date.now();
+    const remainingQuantity = request.quantity - args.deliveryQuantity;
+    const isSplit = remainingQuantity > 0;
+
+    // Find linked PO (if any) to split/update
+    const pos = await ctx.db
+      .query("purchaseOrders")
+      .withIndex("by_request_id", (q) => q.eq("requestId", request._id))
+      .collect();
+
+    // Use the latest PO (assuming 1-1 relationship mostly, or latest is relevant)
+    const po = pos.length > 0 ? pos[pos.length - 1] : null;
+
+    if (isSplit) {
+      // PARTIAL DELIVERY: SPLIT LOGIC
+
+      // 1. Create NEW Request for the Delivery Portion
+      const { _id, _creationTime, ...requestData } = request;
+      const newRequestId = await ctx.db.insert("requests", {
+        ...requestData,
+        quantity: args.deliveryQuantity,
+        status: "ready_for_delivery", // Moved to delivery
+        updatedAt: now,
+        createdAt: now,
+      });
+
+      // 2. Update ORIGINAL Request (Remaining Quantity stays in current status)
+      await ctx.db.patch(request._id, {
+        quantity: remainingQuantity,
+        updatedAt: now,
+      });
+
+      // 3. Handle PO Split if exists
+      if (po) {
+        // Calculate proportional amounts
+        const totalQty = request.quantity; // original total
+        const deliveryRatio = args.deliveryQuantity / totalQty;
+        const remainingRatio = remainingQuantity / totalQty;
+
+        const originalTotalAmount = po.totalAmount;
+        const newDeliveryTotalAmount = originalTotalAmount * deliveryRatio;
+        const newRemainingTotalAmount = originalTotalAmount * remainingRatio;
+
+        // Create new PO for delivery part
+        const { _id: poId, _creationTime: poCreation, ...poData } = po;
+
+        await ctx.db.insert("purchaseOrders", {
+          ...poData,
+          requestId: newRequestId, // Link to new request
+          quantity: args.deliveryQuantity,
+          totalAmount: newDeliveryTotalAmount,
+          status: "ordered", // Link to new request which is ready for delivery
+          updatedAt: now,
+          createdAt: now,
+        });
+
+        // Update original PO with remaining amount and quantity
+        await ctx.db.patch(po._id, {
+          quantity: remainingQuantity,
+          totalAmount: newRemainingTotalAmount,
+          updatedAt: now,
+        });
+      }
+
+    } else {
+      // FULL DELIVERY: SIMPLE STATUS UPDATE
+      await ctx.db.patch(request._id, {
+        status: "ready_for_delivery",
+        updatedAt: now,
+      });
+    }
+  },
+});
+
+/**
+ * Split Pending PO quantity when vendor can't supply full amount
+ * Reduces the PO quantity and creates a new request for the remainder
+ */
+export const splitPendingPOQuantity = mutation({
+  args: {
+    requestId: v.id("requests"),
+    newQuantity: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUser(ctx);
+
+    // Only purchase officers and managers can split PO quantities
+    if (currentUser.role !== "purchase_officer" && currentUser.role !== "manager") {
+      throw new Error("Unauthorized: Only purchase officers and managers can split PO quantities");
+    }
+
+    // Get the original request
+    const request = await ctx.db.get(args.requestId);
+    if (!request) {
+      throw new Error("Request not found");
+    }
+
+    // Validate status - must be pending_po
+    if (request.status !== "pending_po") {
+      throw new Error("Can only split Pending PO requests");
+    }
+
+    // Validate new quantity
+    if (args.newQuantity <= 0) {
+      throw new Error("New quantity must be greater than 0");
+    }
+
+    if (args.newQuantity >= request.quantity) {
+      throw new Error("New quantity must be less than original quantity");
+    }
+
+    const remainingQuantity = request.quantity - args.newQuantity;
+    const now = Date.now();
+
+    // Find the associated PO
+    const pos = await ctx.db
+      .query("purchaseOrders")
+      .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
+      .collect();
+
+    const po = pos.find(p => p.status === "ordered");
+
+    if (!po) {
+      throw new Error("No active PO found for this request");
+    }
+
+    // Calculate new amounts based on unit price
+    const unitPrice = po.totalAmount / request.quantity;
+    const newTotalAmount = args.newQuantity * unitPrice;
+    const remainingTotalAmount = remainingQuantity * unitPrice;
+
+    // Update original request with reduced quantity
+    await ctx.db.patch(args.requestId, {
+      quantity: args.newQuantity,
+      updatedAt: now,
+    });
+
+    // Update PO with reduced quantity and amount
+    await ctx.db.patch(po._id, {
+      quantity: args.newQuantity,
+      totalAmount: newTotalAmount,
+      updatedAt: now,
+    });
+
+    // Create new request for remaining quantity (back to ready_for_cc)
+    const newRequestId = await ctx.db.insert("requests", {
+      requestNumber: request.requestNumber,
+      createdBy: request.createdBy,
+      siteId: request.siteId,
+      itemName: request.itemName,
+      description: request.description,
+      specsBrand: request.specsBrand,
+      quantity: remainingQuantity,
+      unit: request.unit,
+      requiredBy: request.requiredBy,
+      isUrgent: request.isUrgent,
+      photos: request.photos,
+      status: "ready_for_cc", // Back to ready for cost comparison
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Add timeline note
+    await ctx.db.insert("request_notes", {
+      requestNumber: request.requestNumber,
+      userId: currentUser._id,
+      role: currentUser.role,
+      status: "pending_po",
+      content: `Quantity split: ${args.newQuantity} ${request.unit} kept for delivery, ${remainingQuantity} ${request.unit} moved back to Ready for CC (vendor couldn't supply full amount)`,
+      createdAt: now,
+    });
+
+    return {
+      success: true,
+      keptRequestId: args.requestId,
+      keptQuantity: args.newQuantity,
+      newRequestId,
+      remainingQuantity,
+    };
   },
 });

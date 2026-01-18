@@ -7,7 +7,7 @@
  */
 
 import { useState, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,13 +45,13 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   cc_pending: { label: "CC Pending", variant: "secondary", icon: Clock, color: "amber" },
   cc_rejected: { label: "CC Rejected", variant: "destructive", icon: XCircle, color: "red" },
   ready_for_po: { label: "Ready for PO", variant: "default", icon: ShoppingCart, color: "emerald" },
-  pending_po: { label: "Pending PO", variant: "secondary", icon: Clock, color: "amber" },
-  rejected_po: { label: "PO Rejected", variant: "destructive", icon: XCircle, color: "red" },
-  ready_for_delivery: { label: "Ready for Delivery", variant: "default", icon: Truck, color: "indigo" },
-  delivered: { label: "Delivered", variant: "secondary", icon: CheckCircle, color: "slate" },
-  delivery_stage: { label: "Delivery Stage", variant: "outline", icon: Truck, color: "orange" },
   sign_pending: { label: "Sign Pending", variant: "secondary", icon: Clock, color: "amber" },
   sign_rejected: { label: "Sign Rejected", variant: "destructive", icon: XCircle, color: "red" },
+  pending_po: { label: "Pending PO", variant: "secondary", icon: Clock, color: "amber" },
+  // Delivery statuses grouped at the end
+  ready_for_delivery: { label: "Ready for Delivery", variant: "default", icon: Truck, color: "indigo" },
+  delivery_processing: { label: "Delivery Processing", variant: "secondary", icon: Truck, color: "blue" },
+  delivered: { label: "Delivered", variant: "secondary", icon: CheckCircle, color: "green" },
 };
 
 export function PurchaseRequestsContent() {
@@ -68,6 +68,8 @@ export function PurchaseRequestsContent() {
   const [pdfPreviewPoNumber, setPdfPreviewPoNumber] = useState<string | null>(null);
 
   const allRequests = useQuery(api.requests.getPurchaseRequestsByStatus, {});
+  const vendors = useQuery(api.vendors.getAllVendors);
+  const convex = useConvex();
 
   // Enhanced filtering with search - group by requestNumber like manager pages
   const filteredRequestGroups = useMemo(() => {
@@ -163,9 +165,65 @@ export function PurchaseRequestsContent() {
     setCheckRequestId(requestId);
   };
 
-  const handleCreatePO = (requestId: Id<"requests">) => {
-    const request = allRequests?.find(r => r._id === requestId);
+  const handleCreatePO = async (requestId: Id<"requests">) => {
+    const toastId = toast.loading("Checking history...");
+    let rejectedPO = null;
 
+    try {
+      const allPOs = await convex.query(api.purchaseOrders.getDirectPurchaseOrders);
+      const request = allRequests?.find(r => r._id === requestId);
+
+      // Sort POs by creation time to get the latest rejection
+      const sortedPOs = allPOs?.slice().sort((a: any, b: any) => b._creationTime - a._creationTime);
+
+      // Try to find existing rejected PO for this request to restore full data
+      rejectedPO = sortedPOs?.find((po: any) =>
+        ['rejected', 'sign_rejected'].includes(po.status) &&
+        (
+          po.items?.some((i: any) => String(i.requestId) === String(requestId)) ||
+          (request && po.requestNumber && po.requestNumber === request.requestNumber)
+        )
+      );
+    } catch (error) {
+      console.error("Failed to fetch PO history:", error);
+      // Continue without restoration if fetch fails
+    }
+
+    toast.dismiss(toastId);
+
+    if (rejectedPO) {
+      // Restore from Rejected PO
+      setDirectPOInitialData({
+        requestNumber: undefined, // Create new number
+        vendorId: rejectedPO.vendor?._id,
+        deliverySiteId: rejectedPO.site?._id,
+        deliverySiteName: rejectedPO.site?.name,
+        items: (rejectedPO as any).items.map((item: any) => ({
+          requestId: item.requestId,
+          itemDescription: item.itemDescription || item.itemName || "",
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitRate || item.unitPrice,
+          hsnCode: item.hsnSacCode || item.hsnCode
+        })),
+        vendorDetails: rejectedPO.vendor ? {
+          name: rejectedPO.vendor.companyName,
+          email: rejectedPO.vendor.email,
+          phone: rejectedPO.vendor.phone,
+          contactName: rejectedPO.vendor.contactName,
+          gstNumber: rejectedPO.vendor.gstNumber,
+          address: rejectedPO.vendor.address
+        } : undefined,
+        notes: rejectedPO.rejectionReason ? `[Rejection Reason: ${rejectedPO.rejectionReason}]\n${rejectedPO.notes || ''}` : rejectedPO.notes,
+        validTill: rejectedPO.validTill ? new Date(rejectedPO.validTill).toISOString().split('T')[0] : undefined
+      });
+      toast.success("Restored rejected draft details");
+      setShowDirectPODialog(true);
+      return;
+    }
+
+    const request = allRequests?.find(r => r._id === requestId);
     if (request) {
       let unitPrice = 0;
       let vendorId = request.selectedVendorId;
@@ -190,7 +248,19 @@ export function PurchaseRequestsContent() {
           quantity: request.quantity,
           unit: request.unit,
           unitPrice: unitPrice,
-        }]
+        }],
+        vendorDetails: (vendorId && vendors) ? (() => {
+          const v = vendors.find(v => v._id === vendorId);
+          return v ? {
+            name: v.companyName,
+            email: v.email,
+            phone: v.phone,
+            contactName: v.contactName,
+            gstNumber: v.gstNumber,
+            address: v.address
+          } : undefined;
+        })() : undefined,
+        notes: (request as any).rejectionReason ? `[Rejection Reason: ${(request as any).rejectionReason}]` : undefined,
       });
     } else {
       setDirectPOInitialData(null);
@@ -198,6 +268,89 @@ export function PurchaseRequestsContent() {
 
     setShowDirectPODialog(true);
   };
+
+  const handleCreateBulkPO = async (requestIds: Id<"requests">[]) => {
+    if (!requestIds.length) return;
+
+    const toastId = toast.loading("Preparing PO...");
+
+    // Get all request objects
+    const requests = allRequests?.filter(r => requestIds.includes(r._id)) || [];
+    if (requests.length === 0) {
+      toast.dismiss(toastId);
+      return;
+    }
+
+    // Use the first request to determine common fields (Site, Vendor)
+    // Ideally, UI should prevent selecting mixed sites/vendors, or we handle it here.
+    // For now, we default to the first one's context.
+    const firstRequest = requests[0];
+    let commonVendorId = firstRequest.selectedVendorId;
+    let commonSiteId = firstRequest.site?._id;
+
+    // Check for mixed vendors/sites?
+    const mixedVendors = requests.some(r => r.selectedVendorId !== commonVendorId);
+    const mixedSites = requests.some(r => r.site?._id !== commonSiteId);
+
+    if (mixedSites) {
+      toast.warning("Selected items have different delivery sites. Using site from first item.");
+    }
+
+    if (mixedVendors) {
+      toast.warning("Selected items have different assigned vendors. Using vendor from first item.");
+    }
+
+    // Map items
+    const items = requests.map(req => {
+      let unitPrice = 0;
+      if (req.selectedVendorId && req.vendorQuotes) {
+        const quote = req.vendorQuotes.find(q => q.vendorId === req.selectedVendorId);
+        if (quote) unitPrice = quote.unitPrice || 0;
+      }
+      return {
+        requestId: req._id,
+        itemDescription: req.itemName,
+        description: req.description,
+        quantity: req.quantity,
+        unit: req.unit,
+        unitPrice: unitPrice,
+      };
+    });
+
+    // Fetch vendor details if we have a vendor ID
+    let vendorDetails = undefined;
+    if (commonVendorId && vendors) {
+      const v = vendors.find(v => v._id === commonVendorId);
+      if (v) {
+        vendorDetails = {
+          name: v.companyName,
+          email: v.email,
+          phone: v.phone,
+          contactName: v.contactName,
+          gstNumber: v.gstNumber,
+          address: v.address
+        };
+      }
+    }
+
+    setDirectPOInitialData({
+      requestNumber: firstRequest.requestNumber, // Use request number for grouping? or leave undefined for new? 
+      // If they are from same group, use it.
+      // If mixed groups, maybe generate new?
+      // Code uses `existingRequestNumber` if provided.
+      vendorId: commonVendorId || undefined,
+      deliverySiteId: commonSiteId,
+      deliverySiteName: firstRequest.site?.name,
+      items: items,
+      vendorDetails: vendorDetails,
+      // Combine notes?
+      notes: undefined
+    });
+
+    toast.dismiss(toastId);
+    setShowDirectPODialog(true);
+  };
+
 
   return (
     <>
@@ -387,7 +540,7 @@ export function PurchaseRequestsContent() {
           </Card>
         ) : viewMode === "table" ? (
           <RequestsTable
-            requests={filteredRequestGroups.flatMap(group => group.items)}
+            requests={filteredRequestGroups.flatMap(group => group.items) as any}
             viewMode="table"
             onViewDetails={setSelectedRequestId}
             onOpenCC={(requestId, requestIds) => setCCRequestId(requestId)}
@@ -416,8 +569,8 @@ export function PurchaseRequestsContent() {
                 <PurchaseRequestGroupCard
                   key={requestNumber}
                   requestNumber={requestNumber}
-                  items={items}
-                  firstItem={firstItem}
+                  items={items as any}
+                  firstItem={firstItem as any}
                   statusInfo={statusInfo}
                   hasMultipleItems={hasMultipleItems}
                   urgentCount={urgentCount}
@@ -431,6 +584,7 @@ export function PurchaseRequestsContent() {
                   onMoveToCC={handleMoveToCC}
                   onCheck={handleCheck}
                   onCreatePO={handleCreatePO}
+                  onCreateBulkPO={handleCreateBulkPO}
                   onViewPDF={setPdfPreviewPoNumber}
                 />
               );

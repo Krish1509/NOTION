@@ -113,7 +113,7 @@ export function MaterialRequestForm({
   // Get draft data if editing - using getUserRequests and filtering
   const allUserRequests = useQuery(api.requests.getUserRequests);
   const draftRequests = draftRequestNumber && allUserRequests
-    ? allUserRequests.filter((r) => r.requestNumber === draftRequestNumber && r.status === "draft")
+    ? allUserRequests.filter((r) => r.requestNumber === draftRequestNumber && (r.status === "draft" || r.status === "rejected" || r.status === "sign_rejected"))
     : [];
   const assignedSites = useQuery(api.requests.getUserAssignedSites);
   const inventoryItems = useQuery(
@@ -193,20 +193,20 @@ export function MaterialRequestForm({
   useEffect(() => {
     // Wait for allUserRequests to load before processing draft data
     if (open && draftRequestNumber && allUserRequests !== undefined) {
-      const filteredDrafts = allUserRequests.filter(
-        (r) => r.requestNumber === draftRequestNumber && r.status === "draft"
+      const filteredRequests = allUserRequests.filter(
+        (r) => r.requestNumber === draftRequestNumber && (r.status === "draft" || r.status === "rejected" || r.status === "sign_rejected")
       );
 
-      if (filteredDrafts.length > 0) {
-        const firstRequest = filteredDrafts[0];
+      if (filteredRequests.length > 0) {
+        const firstRequest = filteredRequests[0];
         setSharedFormData({
           siteId: firstRequest.siteId,
           requiredBy: new Date(firstRequest.requiredBy),
           orderNote: "",
         });
 
-        // Convert draft requests to form items with sequential IDs (1, 2, 3...)
-        const draftItems: RequestItem[] = filteredDrafts
+        // Convert requests to form items with sequential IDs (1, 2, 3...)
+        const requestItems: RequestItem[] = filteredRequests
           .sort((a, b) => {
             // Sort by itemOrder (1, 2, 3...) or createdAt as fallback
             const orderA = a.itemOrder ?? a.createdAt;
@@ -234,13 +234,13 @@ export function MaterialRequestForm({
           });
 
         // Ensure items are sorted by ID before setting state
-        const sortedDraftItems = draftItems.sort((a, b) => {
+        const sortedRequestItems = requestItems.sort((a, b) => {
           const idA = parseInt(a.id, 10) || 0;
           const idB = parseInt(b.id, 10) || 0;
           return idA - idB; // Ascending: 1, 2, 3...
         });
 
-        setItems(sortedDraftItems.length > 0 ? sortedDraftItems : [{
+        setItems(sortedRequestItems.length > 0 ? sortedRequestItems : [{
           id: "1",
           itemName: "",
           itemSearchQuery: "",
@@ -1196,7 +1196,11 @@ export function MaterialRequestForm({
                 <Package className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
               </div>
               <DialogTitle className="text-lg sm:text-xl font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
-                {draftRequestNumber ? "Edit Draft Request" : "New Material Request"}
+                {draftRequestNumber ? (
+                  draftRequests.some(r => r.status === "rejected" || r.status === "sign_rejected")
+                    ? "Edit & Resubmit Request"
+                    : "Edit Draft Request"
+                ) : "New Material Request"}
               </DialogTitle>
             </div>
           </DialogHeader>
@@ -1206,6 +1210,18 @@ export function MaterialRequestForm({
                 <div className="flex items-start gap-3 p-3.5 sm:p-4 text-xs sm:text-sm text-destructive bg-destructive/10 border-l-4 border-destructive rounded-lg shadow-sm">
                   <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 mt-0.5 flex-shrink-0" />
                   <span className="flex-1 font-medium">{error}</span>
+                </div>
+              )}
+
+              {draftRequestNumber && draftRequests.some(r => (r.status === "rejected" || r.status === "sign_rejected") && r.rejectionReason) && (
+                <div className="flex items-start gap-3 p-3.5 sm:p-4 text-xs sm:text-sm text-amber-700 bg-amber-50 border-l-4 border-amber-500 rounded-lg shadow-sm dark:bg-amber-950/30 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 mt-0.5 flex-shrink-0 text-amber-500" />
+                  <div className="space-y-1">
+                    <p className="font-bold">Rejection Reason:</p>
+                    <p className="font-medium">
+                      {draftRequests.find(r => r.rejectionReason)?.rejectionReason}
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -2177,7 +2193,7 @@ export function MaterialRequestForm({
             </form>
           </div>
         </DialogContent >
-      </Dialog>
+      </Dialog >
 
       <ImageGallery
         images={galleryState.images.map(url => ({ imageUrl: url, imageKey: url }))}

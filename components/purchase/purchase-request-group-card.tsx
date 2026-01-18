@@ -15,11 +15,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertCircle, Eye, FileText, MapPin, Search, X, Sparkles, Building, Plus, Save, Edit, Check, Truck, Package, PackageX, NotebookPen, ShoppingCart, ChevronDown, ChevronRight, CheckCircle, PieChart, RotateCw } from "lucide-react";
+import { AlertCircle, Eye, FileText, MapPin, Search, X, Sparkles, Building, Plus, Save, Edit, Check, Truck, Package, PackageX, NotebookPen, ShoppingCart, ChevronDown, ChevronRight, CheckCircle, PieChart, RotateCw, CheckSquare, Square } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CompactImageGallery } from "@/components/ui/image-gallery";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { NotesTimelineDialog } from "@/components/requests/notes-timeline-dialog";
+import { CreateDeliveryDialog } from "@/components/purchase/create-delivery-dialog";
+import { EditPOQuantityDialog } from "@/components/purchase/edit-po-quantity-dialog";
+import { ViewDCDialog } from "@/components/purchase/view-dc-dialog";
 import type { Id } from "@/convex/_generated/dataModel";
 
 import { useUserRole } from "@/hooks/use-user-role";
@@ -64,6 +68,8 @@ interface RequestItem {
   isSplitApproved?: boolean;
   directAction?: "po" | "delivery";
   rejectionReason?: string;
+  poId?: Id<"purchaseOrders">;
+  deliveryId?: Id<"deliveries">;
 }
 
 interface Vendor {
@@ -104,6 +110,7 @@ interface PurchaseRequestGroupCardProps {
   onMoveToCC?: (requestId: Id<"requests">) => void;
   onCheck?: (requestId: Id<"requests">) => void;
   onCreatePO?: (requestId: Id<"requests">) => void;
+  onCreateBulkPO?: (requestIds: Id<"requests">[]) => void;
   onViewPDF?: (poNumber: string) => void;
 }
 
@@ -426,6 +433,7 @@ export function PurchaseRequestGroupCard({
   onMoveToCC,
   onCheck,
   onCreatePO,
+  onCreateBulkPO,
   onViewPDF,
 }: PurchaseRequestGroupCardProps) {
   const userRole = useUserRole();
@@ -435,6 +443,7 @@ export function PurchaseRequestGroupCard({
   // Vendor queries
   const vendors = useQuery(api.vendors.getAllVendors);
   const updateRequestDetails = useMutation(api.requests.updateRequestDetails);
+  const confirmDeliveryMutation = useMutation(api.deliveries.confirmDelivery);
 
   // Collect all unique item names from items
   const uniqueItemNames = useMemo(() => {
@@ -526,7 +535,50 @@ export function PurchaseRequestGroupCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showReadyForCCConfirm, setShowReadyForCCConfirm] = useState<Id<"requests"> | null>(null);
   const [showReadyForPOConfirm, setShowReadyForPOConfirm] = useState<Id<"requests"> | null>(null);
+
   const [showReadyForDeliveryConfirm, setShowReadyForDeliveryConfirm] = useState<Id<"requests"> | null>(null);
+
+  const [markDeliveryItem, setMarkDeliveryItem] = useState<{ id: Id<"requests">; poId?: Id<"purchaseOrders">; quantity: number; name: string; unit: string } | null>(null);
+  const [editQuantityItem, setEditQuantityItem] = useState<{ id: Id<"requests">; quantity: number; name: string; unit: string } | null>(null);
+  const [viewDCId, setViewDCId] = useState<Id<"deliveries"> | null>(null);
+  const [showConfirmDelivery, setShowConfirmDelivery] = useState<Id<"requests"> | null>(null);
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+
+  // Handle individual selection
+  const toggleSelection = (requestId: string) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(requestId)) {
+      newSelected.delete(requestId);
+    } else {
+      newSelected.add(requestId);
+    }
+    setSelectedItems(newSelected);
+  };
+
+  // Handle confirm delivery
+  const handleConfirmDelivery = async (requestId: Id<"requests">) => {
+    try {
+      await confirmDeliveryMutation({ requestId });
+      toast.success("Delivery confirmed successfully");
+      setShowConfirmDelivery(null);
+    } catch (error) {
+      console.error("Failed to confirm delivery:", error);
+      toast.error("Failed to confirm delivery");
+    }
+  };
+
+  // Handle select all
+  const toggleSelectAll = () => {
+    const validItems = items.filter(item => item.status === "ready_for_po");
+    if (selectedItems.size === validItems.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(validItems.map(i => i._id)));
+    }
+  };
+
+  const validItemsCount = items.filter(item => item.status === "ready_for_po").length;
+  const isAllSelected = validItemsCount > 0 && selectedItems.size === validItemsCount;
 
   // Initialize items with vendor data
   useEffect(() => {
@@ -623,6 +675,20 @@ export function PurchaseRequestGroupCard({
             </Badge>
 
           </div>
+          <div className="flex items-center gap-2 mt-1">
+            {validItemsCount > 0 && onCreateBulkPO && (
+              <div className="flex items-center gap-2 mr-2">
+                <Checkbox
+                  checked={isAllSelected}
+                  onCheckedChange={toggleSelectAll}
+                  id={`select-all-${requestNumber}`}
+                />
+                <label htmlFor={`select-all-${requestNumber}`} className="text-xs text-muted-foreground cursor-pointer select-none">
+                  Select All
+                </label>
+              </div>
+            )}
+          </div>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               {firstItem.site?.address && (
@@ -688,6 +754,18 @@ export function PurchaseRequestGroupCard({
             </Button>
           )}
         </div>
+
+        {/* Bulk Action Header Button */}
+        {selectedItems.size > 0 && onCreateBulkPO && (
+          <Button
+            size="sm"
+            className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white animate-in zoom-in-95 duration-200"
+            onClick={() => onCreateBulkPO(Array.from(selectedItems) as Id<"requests">[])}
+          >
+            <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
+            Create PO ({selectedItems.size})
+          </Button>
+        )}
       </div>
 
       {/* Items List */}
@@ -727,6 +805,15 @@ export function PurchaseRequestGroupCard({
                     <Badge variant="outline" className="text-xs px-1.5 py-0.5 h-5 min-w-[24px] flex items-center justify-center flex-shrink-0">
                       {displayNumber}
                     </Badge>
+                    {item.status === "ready_for_po" && onCreateBulkPO && (
+                      <div className="flex items-center justify-center h-5 w-5 mr-1">
+                        <Checkbox
+                          checked={selectedItems.has(item._id)}
+                          onCheckedChange={() => toggleSelection(item._id)}
+                          className="h-4 w-4"
+                        />
+                      </div>
+                    )}
                     <div className="space-y-1 text-sm flex-1 min-w-0">
                       <div className="break-words">
                         <span className="font-medium text-muted-foreground">Item:</span>{" "}
@@ -1091,7 +1178,7 @@ export function PurchaseRequestGroupCard({
                     </Button>
                   )}
                   {/* View PDF Button for Specific Statuses */}
-                  {onViewPDF && ["sign_pending", "sign_rejected", "ordered", "pending_po", "ready_for_delivery", "delivery_stage", "delivered"].includes(item.status) && (
+                  {onViewPDF && ["sign_pending", "sign_rejected", "ordered", "pending_po", "ready_for_delivery", "delivery_processing", "delivered"].includes(item.status) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -1100,6 +1187,30 @@ export function PurchaseRequestGroupCard({
                     >
                       <FileText className="h-3.5 w-3.5 mr-1.5" />
                       View PDF
+                    </Button>
+                  )}
+                  {/* View DC Button for items with delivery challan */}
+                  {item.deliveryId && ["delivery_processing", "delivered"].includes(item.status) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setViewDCId(item.deliveryId!)}
+                      className="text-xs h-7 px-3 bg-green-50 text-green-700 border-green-200 hover:bg-green-600 hover:text-white hover:border-green-600 transition-all shadow-sm font-medium dark:bg-green-900/20 dark:text-green-300 dark:border-green-800 dark:hover:bg-green-600"
+                    >
+                      <Truck className="h-3.5 w-3.5 mr-1.5" />
+                      View DC
+                    </Button>
+                  )}
+                  {/* Confirm Delivery Button - Site Engineer & Purchase only, requires DC to exist */}
+                  {item.deliveryId && ["delivery_processing"].includes(item.status) && (userRole === ROLES.SITE_ENGINEER || userRole === ROLES.PURCHASE_OFFICER) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowConfirmDelivery(item._id)}
+                      className="text-xs h-7 px-3 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all shadow-sm font-medium dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-600"
+                    >
+                      <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
+                      Confirm Delivery
                     </Button>
                   )}
                   {item.status === "ready_for_po" && onCreatePO && (
@@ -1124,6 +1235,36 @@ export function PurchaseRequestGroupCard({
                       Resubmit PO
                     </Button>
                   )}
+                  {["pending_po", "ready_for_delivery"].includes(item.status) && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        // For pending_po: Show edit quantity dialog first
+                        if (item.status === "pending_po") {
+                          setEditQuantityItem({
+                            id: item._id,
+                            quantity: item.quantity,
+                            name: item.itemName,
+                            unit: item.unit
+                          });
+                        } else {
+                          // For ready_for_delivery: Directly open Create DC
+                          setMarkDeliveryItem({
+                            id: item._id,
+                            poId: item.poId,
+                            quantity: item.quantity,
+                            name: item.itemName,
+                            unit: item.unit
+                          });
+                        }
+                      }}
+                      className="text-xs h-7 px-3 bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all shadow-sm font-medium dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800 dark:hover:bg-indigo-600"
+                      variant="outline"
+                    >
+                      <Truck className="h-3.5 w-3.5 mr-1.5" />
+                      {item.status === "ready_for_delivery" ? "Create DC" : "Ready for Delivery"}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -1145,6 +1286,18 @@ export function PurchaseRequestGroupCard({
         open={isNotesOpen}
         onOpenChange={setIsNotesOpen}
       />
+
+      {markDeliveryItem && (
+        <CreateDeliveryDialog
+          open={!!markDeliveryItem}
+          onOpenChange={(open) => !open && setMarkDeliveryItem(null)}
+          requestId={markDeliveryItem.id}
+          poId={markDeliveryItem.poId}
+          currentQuantity={markDeliveryItem.quantity}
+          itemName={markDeliveryItem.name}
+          unit={markDeliveryItem.unit}
+        />
+      )}
 
       {/* Ready for CC Confirmation Dialog */}
       {showReadyForCCConfirm && (
@@ -1268,6 +1421,64 @@ export function PurchaseRequestGroupCard({
           </div>
         </div>
       )}
+
+      {/* View DC Dialog */}
+      <ViewDCDialog
+        open={viewDCId !== null}
+        onOpenChange={(open) => !open && setViewDCId(null)}
+        deliveryId={viewDCId}
+      />
+
+      {/* Confirm Delivery Dialog */}
+      {showConfirmDelivery && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 border border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-center w-16 h-16 mx-auto mb-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30">
+              <CheckCircle className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <h3 className="text-2xl font-bold text-center mb-3 text-gray-900 dark:text-white">
+              Confirm Delivery
+            </h3>
+            <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
+              Are you sure you want to confirm this delivery? This will mark the item as delivered.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowConfirmDelivery(null)}
+                className="w-full h-11 font-medium border-gray-200 hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:hover:bg-gray-800 dark:hover:text-white transition-colors"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (showConfirmDelivery) {
+                    handleConfirmDelivery(showConfirmDelivery);
+                  }
+                }}
+                className="w-full h-11 font-medium bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02]"
+              >
+                Confirm
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit PO Quantity Dialog - Shows BEFORE Create DC for pending_po items */}
+      <EditPOQuantityDialog
+        open={!!editQuantityItem}
+        onOpenChange={(open) => !open && setEditQuantityItem(null)}
+        requestId={editQuantityItem?.id || null}
+        currentQuantity={editQuantityItem?.quantity || 0}
+        itemName={editQuantityItem?.name || ""}
+        unit={editQuantityItem?.unit || ""}
+        onSuccess={() => {
+          // After marking as ready, the item will move to ready_for_delivery status
+          // Data will refresh automatically via Convex reactivity
+          setEditQuantityItem(null);
+        }}
+      />
     </div >
   );
 }

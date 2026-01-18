@@ -778,7 +778,7 @@ export function CostComparisonDialog({
       if (hasSufficientInventory || quantityFromVendor === 0) {
         await updatePurchaseRequestStatus({
           requestId: activeRequestId,
-          status: "delivery_stage",
+          status: "delivered",
         });
         toast.success(
           `Direct Delivery created! ${deliveryQuantity} ${request.unit || 'units'} deducted from inventory. ` +

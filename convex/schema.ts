@@ -74,13 +74,15 @@ export default defineSchema({
       v.literal("direct_po"),
       v.literal("rejected_po"),
       v.literal("ready_for_delivery"),
-      v.literal("delivery_stage"),
+      v.literal("delivery_stage"), // Deprecated - migrating to delivery_processing
+      v.literal("delivery_processing"),
       v.literal("delivered")
     ),
     approvedBy: v.optional(v.id("users")), // Manager
     approvedAt: v.optional(v.number()),
     rejectionReason: v.optional(v.string()),
     deliveryMarkedAt: v.optional(v.number()),
+    deliveryId: v.optional(v.id("deliveries")), // Linked delivery record
     notes: v.optional(v.string()),
     directAction: v.optional(v.union(v.literal("delivery"), v.literal("po"))), // Flag for direct delivery/PO without CC
     createdAt: v.number(),
@@ -341,32 +343,70 @@ export default defineSchema({
   // ============================================================================
   // Delivery Challans Table
   // ============================================================================
-  deliveryChallans: defineTable({
-    dcNumber: v.string(), // Auto-generated unique identifier
+  // ============================================================================
+  // Deliveries Table
+  // ============================================================================
+  deliveries: defineTable({
+    deliveryId: v.string(), // Auto-generated unique identifier (DC-XXXX)
     poId: v.id("purchaseOrders"), // Linked purchase order
-    requestId: v.id("requests"), // Linked request
-    deliveryMode: v.union(
-      v.literal("porter"),
-      v.literal("private_vehicle")
+    // Delivery Type
+    deliveryType: v.union(
+      v.literal("private"), // Internal/Private vehicle
+      v.literal("public"), // Public transport (Porter etc)
+      v.literal("vendor") // Direct vendor delivery
     ),
-    vehicleNumber: v.optional(v.string()),
-    driverPhone: v.optional(v.string()),
-    receiverName: v.string(), // Receiver name at site
-    invoiceUrl: v.optional(v.string()), // Uploaded invoice URL
-    invoiceKey: v.optional(v.string()), // Invoice storage key
+    // Delivery/Vendor Party Info
+    deliveryPerson: v.optional(v.string()), // Driver Name
+    deliveryContact: v.optional(v.string()), // Driver Phone
+    vehicleNumber: v.optional(v.string()), // Vehicle Number
+    transportName: v.optional(v.string()), // Transport Name (for Vendor type)
+    transportId: v.optional(v.string()), // Transport ID (for Vendor type)
+
+    receiverName: v.string(), // Receiver at site
+
+    // Documentation
+    loadingPhoto: v.optional(v.object({
+      imageUrl: v.string(),
+      imageKey: v.string(),
+    })),
+    invoicePhoto: v.optional(v.object({
+      imageUrl: v.string(),
+      imageKey: v.string(),
+    })),
+    receiptPhoto: v.optional(v.object({
+      imageUrl: v.string(),
+      imageKey: v.string(),
+    })),
+
+    // Purchase Details
+    purchaserName: v.string(), // From purchaser list
+
+    // Approval
+    approvedByRole: v.optional(v.union(
+      v.literal("manager"),
+      v.literal("pe")
+    )),
+
+    // Payment
+    paymentAmount: v.optional(v.number()),
+    paymentStatus: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("paid"),
+      v.literal("partial")
+    )),
+
     status: v.union(
       v.literal("pending"),
       v.literal("delivered"),
       v.literal("cancelled")
     ),
-    deliveredAt: v.optional(v.number()),
+
     createdBy: v.id("users"), // Purchase Officer
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_dc_number", ["dcNumber"])
+    .index("by_delivery_id", ["deliveryId"])
     .index("by_po_id", ["poId"])
-    .index("by_request_id", ["requestId"])
     .index("by_status", ["status"])
     .index("by_created_at", ["createdAt"]),
   // ============================================================================

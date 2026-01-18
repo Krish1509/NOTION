@@ -608,7 +608,7 @@ export function SiteRequestsContent() {
       </div>
 
       <RequestsTable
-        requests={allFilteredRequests}
+        requests={allFilteredRequests as any}
         onViewDetails={(requestId) => setSelectedRequestId(requestId)}
         onEditDraft={handleEditDraft}
         onDeleteDraft={handleDeleteDraft}

@@ -87,7 +87,7 @@ export function ManagerOverviewContent() {
 
         {/* Requests List */}
         <RequestsTable
-          requests={filteredRequests}
+          requests={filteredRequests as any}
           onViewDetails={(requestId) => setSelectedRequestId(requestId)}
           onOpenCC={(requestId) => setCCRequestId(requestId)}
           showCreator={true}

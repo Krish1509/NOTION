@@ -562,6 +562,11 @@ export function RequestsTable({
           const ccPendingCount = ccPendingItems.length;
           const ccPendingIds = ccPendingItems.map((item) => item._id);
 
+          // Count items requiring review for the Review button (pending, sign_pending, ready_for_cc)
+          const reviewableItemsCount = items.filter((item) =>
+            ["pending", "sign_pending", "ready_for_cc"].includes(item.status)
+          ).length;
+
           // Check if all items in the group have the same status
           const allItemsHaveSameStatus = items.length > 0
             ? items.every((item) => item.status === items[0].status)
@@ -760,16 +765,16 @@ export function RequestsTable({
                                 ✗ Rejected
                               </Badge>
                             )}
-                          </div>
-                          <div className="flex items-center gap-2">
                             {item.status === 'draft' && (
                               <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-950 dark:text-gray-300 dark:border-gray-800 text-xs flex-shrink-0">
                                 Draft
                               </Badge>
                             )}
                             {item.status !== 'draft' && !['approved', 'rejected', 'cc_approved', 'cc_rejected'].includes(item.status) && getStatusBadge(item.status)}
+                          </div>
+                          <div className="flex items-center gap-2">
                             {/* Per-item action button */}
-                            {item.status === 'ready_for_cc' && (
+                            {(item.status === 'ready_for_cc' || item.status === 'cc_pending') && (
                               <>
                                 {item.directAction === 'po' && onDirectPO ? (
                                   <Button
@@ -829,16 +834,19 @@ export function RequestsTable({
                             )}
                             {onViewDetails && (
                               <Button
-                                variant="ghost"
+                                variant={showCreator && (item.status === "ready_for_cc" || item.status === "sign_pending" || item.status === "pending") ? "default" : "ghost"}
                                 size="sm"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onViewDetails?.(item._id);
                                 }}
-                                className="h-6 px-2 text-xs hover:bg-muted"
+                                className={cn(
+                                  "h-6 px-2 text-xs hover:bg-muted",
+                                  showCreator && (item.status === "ready_for_cc" || item.status === "sign_pending" || item.status === "pending") && "bg-orange-600 text-white hover:bg-orange-700"
+                                )}
                               >
                                 <Eye className="h-3 w-3 mr-1" />
-                                View
+                                {showCreator && (item.status === "ready_for_cc" || item.status === "sign_pending" || item.status === "pending") ? "Review" : "View"}
                               </Button>
                             )}
                           </div>
@@ -894,14 +902,14 @@ export function RequestsTable({
                             Urgent
                           </Badge>
                         )}
-                      </div>
-                      <div className="flex items-center gap-2">
                         {items[0].status === 'draft' && (
                           <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-950 dark:text-gray-300 dark:border-gray-800 text-xs flex-shrink-0">
                             Draft
                           </Badge>
                         )}
                         {items[0].status !== 'draft' && getStatusBadge(items[0].status)}
+                      </div>
+                      <div className="flex items-center gap-2">
                         {/* Per-item action button for collapsed view */}
                         {(items[0].status === 'cc_pending' || items[0].status === 'ready_for_cc') && (
                           <>
@@ -989,7 +997,7 @@ export function RequestsTable({
                       </span>
                     )}
                   </Button>
-                  {firstItem.status === "draft" && (
+                  {(firstItem.status === "draft" || firstItem.status === "rejected" || firstItem.status === "sign_rejected") && (
                     <div className="flex gap-0.5 flex-nowrap">
                       {onEditDraft && (
                         <Button
@@ -997,7 +1005,7 @@ export function RequestsTable({
                           size="sm"
                           onClick={() => onEditDraft(requestNumber)}
                           className="h-6 sm:h-7 px-1.5 sm:px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950"
-                          title="Edit draft"
+                          title={firstItem.status === "draft" ? "Edit draft" : "Edit & Resubmit"}
                         >
                           <Edit className="h-3 w-3" />
                         </Button>
@@ -1008,7 +1016,7 @@ export function RequestsTable({
                           size="sm"
                           onClick={() => onSendDraft(requestNumber)}
                           className="h-6 sm:h-7 px-1.5 sm:px-2 text-xs bg-green-600 hover:bg-green-700 text-white"
-                          title="Send draft"
+                          title={firstItem.status === "draft" ? "Send draft" : "Send Resubmission"}
                         >
                           <Send className="h-3 w-3" />
                         </Button>
@@ -1019,7 +1027,7 @@ export function RequestsTable({
                           size="sm"
                           onClick={() => onDeleteDraft(requestNumber)}
                           className="h-6 sm:h-7 px-1.5 sm:px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
-                          title="Delete draft"
+                          title={firstItem.status === "draft" ? "Delete draft" : "Delete Request"}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -1060,8 +1068,8 @@ export function RequestsTable({
                         View PDF
                       </Button>
                     )}
-                    {/* Action Buttons for Sign Pending in Manager View */}
-                    {showCreator && (overallStatus === "sign_pending" || firstItem.status === "sign_pending") ? (
+                    {/* Action Buttons for Sign Pending/Ready for CC in Manager View */}
+                    {showCreator && reviewableItemsCount > 0 ? (
                       <Button
                         variant="default"
                         size="sm"
@@ -1072,7 +1080,7 @@ export function RequestsTable({
                         className="h-6 sm:h-7 px-1.5 sm:px-2 text-xs bg-orange-600 text-white hover:bg-orange-700"
                       >
                         <Eye className="h-3 sm:h-3.5 w-3 sm:w-3.5 mr-1" />
-                        Review
+                        Review({reviewableItemsCount})
                       </Button>
                     ) : onViewDetails ? (
                       <Button
@@ -1128,6 +1136,11 @@ export function RequestsTable({
                     const hasMultipleItems = items.length > 1;
                     const urgentCount = items.filter((item) => item.isUrgent).length;
                     const totalItems = items.length;
+
+                    // Count items requiring review for the Review button (pending, sign_pending, ready_for_cc)
+                    const reviewableItemsCount = items.filter((item) =>
+                      ["pending", "sign_pending", "ready_for_cc"].includes(item.status)
+                    ).length;
 
                     // Check if all items in the group have the same status
                     const allItemsHaveSameStatus = items.length > 0
@@ -1444,7 +1457,7 @@ export function RequestsTable({
                                   )}
                                 </Button>
                                 {/* Draft action buttons */}
-                                {firstItem.status === "draft" && (
+                                {(firstItem.status === "draft" || firstItem.status === "rejected" || firstItem.status === "sign_rejected") && (
                                   <>
                                     {onEditDraft && (
                                       <Button
@@ -1535,16 +1548,18 @@ export function RequestsTable({
                                 )}
                                 {/* View button - show for first item */}
                                 <Button
-                                  variant={showCreator && (firstItem.status === "pending" || firstItem.status === "sign_pending") ? "default" : "outline"}
+                                  variant={showCreator && reviewableItemsCount > 0 ? "default" : "outline"}
                                   size="sm"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     onViewDetails?.(firstItem._id);
                                   }}
-                                  className={getStatusButtonStyles(firstItem.status)}
+                                  className={showCreator && reviewableItemsCount > 0 ? "bg-orange-600 text-white hover:bg-orange-700 hover:text-white" : getStatusButtonStyles(firstItem.status)}
                                 >
                                   <Eye className="h-4 w-4 mr-2 text-inherit" />
-                                  {showCreator && (firstItem.status === "pending" || firstItem.status === "sign_pending") ? "Review" : "View"}
+                                  {showCreator && reviewableItemsCount > 0
+                                    ? `Review(${reviewableItemsCount})`
+                                    : "View"}
                                 </Button>
                               </div>
                             </TableCell>

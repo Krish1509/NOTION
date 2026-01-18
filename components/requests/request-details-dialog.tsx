@@ -9,6 +9,7 @@
  */
 
 import { useState, useRef, useEffect, useMemo, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { format } from "date-fns";
@@ -20,6 +21,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -45,6 +56,7 @@ import { ItemInfoDialog } from "./item-info-dialog";
 import { LocationInfoDialog } from "@/components/locations/location-info-dialog";
 import { NotesTimelineDialog } from "./notes-timeline-dialog";
 import { PDFPreviewDialog } from "@/components/purchase/pdf-preview-dialog";
+import { EditPOQuantityDialog } from "@/components/purchase/edit-po-quantity-dialog";
 import type { Id } from "@/convex/_generated/dataModel";
 
 interface RequestDetailsDialogProps {
@@ -52,6 +64,7 @@ interface RequestDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   requestId: Id<"requests"> | null;
   onCheck?: (requestId: Id<"requests">) => void;
+  onOpenCC?: (requestId: Id<"requests">, requestIds?: Id<"requests">[]) => void;
 }
 
 export function RequestDetailsDialog({
@@ -59,6 +72,7 @@ export function RequestDetailsDialog({
   onOpenChange,
   requestId,
   onCheck,
+  onOpenCC,
 }: RequestDetailsDialogProps) {
   const userRole = useUserRole();
   const request = useQuery(
@@ -73,11 +87,21 @@ export function RequestDetailsDialog({
 
 
   const handleSingleApproveDirectPO = async (requestId: Id<"requests">) => {
+    setIsLoading(true);
     try {
       await approveDirectPO({ requestId });
+      setShowSignPendingApproveConfirm(null);
       toast.success("Direct PO approved successfully");
+      // Small delay to let confirmation dialog close first
+      setTimeout(() => {
+        closeAndRefresh();
+      }, 100);
     } catch (error: any) {
       toast.error("Failed to approve Direct PO: " + error.message);
+      console.error("Approve error:", error);
+      setShowSignPendingApproveConfirm(null); // Close confirmation on error
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -122,7 +146,8 @@ export function RequestDetailsDialog({
   const [showItemDirectDeliveryConfirm, setShowItemDirectDeliveryConfirm] = useState<Id<"requests"> | null>(null);
   const [showBulkSplitConfirm, setShowBulkSplitConfirm] = useState(false);
   const [showNotesTimeline, setShowNotesTimeline] = useState(false);
-  const [showSignPendingApproveConfirm, setShowSignPendingApproveConfirm] = useState(false);
+  const [showSignPendingApproveConfirm, setShowSignPendingApproveConfirm] = useState<Id<"requests"> | null>(null);
+  const [editQuantityItem, setEditQuantityItem] = useState<{ id: Id<"requests">; quantity: number; name: string; unit: string } | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
   const hasRefreshedRef = useRef(false);
 
@@ -901,11 +926,24 @@ export function RequestDetailsDialog({
         poNumber={pdfPreviewPoNumber}
       />
 
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className={cn(
-          "w-[95vw] sm:w-full max-w-[95vw] sm:max-w-[640px] md:max-w-[768px] lg:max-w-[1024px] xl:max-w-[1600px] max-h-[95vh] overflow-hidden flex flex-col p-0 gap-0",
-          isMobileLayout && "max-w-[95vw] w-[95vw]"
-        )}>
+      <Dialog
+        open={open}
+        onOpenChange={(newOpen) => {
+          // Don't close main dialog if confirmation is showing
+          if (!newOpen && showSignPendingApproveConfirm) {
+            return;
+          }
+          onOpenChange(newOpen);
+        }}
+      >
+        <DialogContent
+          className={cn(
+            "w-[95vw] sm:w-full max-w-[95vw] sm:max-w-[640px] md:max-w-[768px] lg:max-w-[1024px] xl:max-w-[1600px] max-h-[95vh] overflow-hidden flex flex-col p-0 gap-0",
+            isMobileLayout && "max-w-[95vw] w-[95vw]"
+          )}
+          aria-hidden={showSignPendingApproveConfirm ? true : undefined}
+          style={showSignPendingApproveConfirm ? { pointerEvents: 'none' } : undefined}
+        >
           <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b bg-gradient-to-r from-background to-muted/20">
             <div className="space-y-3">
               <DialogTitle className={cn(
@@ -1167,67 +1205,6 @@ export function RequestDetailsDialog({
                     )}
                   </div>
 
-                  {/* Bulk Actions at Top for Manager Visibility */}
-                  {isManager && (signPendingItems.length > 0 || pendingItems.length > 0) && (
-                    <div className={cn(
-                      "flex flex-col sm:flex-row items-center justify-between p-4 rounded-xl gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 border",
-                      signPendingItems.length > 0
-                        ? "bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 border-amber-200 dark:border-amber-800"
-                        : "bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 border-emerald-200 dark:border-emerald-800"
-                    )}>
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0",
-                          signPendingItems.length > 0 ? "bg-amber-100 dark:bg-amber-900/40" : "bg-emerald-100 dark:bg-emerald-900/40"
-                        )}>
-                          {signPendingItems.length > 0 ? (
-                            <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                          ) : (
-                            <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                          )}
-                        </div>
-                        <div>
-                          <h3 className={cn(
-                            "text-sm font-bold uppercase tracking-tight",
-                            signPendingItems.length > 0 ? "text-amber-900 dark:text-amber-100" : "text-emerald-900 dark:text-emerald-100"
-                          )}>
-                            {signPendingItems.length > 0 ? "Review Required" : "Approval Required"}
-                          </h3>
-                          <p className={cn(
-                            "text-xs",
-                            signPendingItems.length > 0 ? "text-amber-700 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300"
-                          )}>
-                            {selectedItemsForAction.size > 0
-                              ? `${selectedItemsForAction.size} items selected`
-                              : `Bulk process all ${signPendingItems.length + pendingItems.length} items`
-                            }
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowRejectionInput(true)}
-                          disabled={isLoading}
-                          className="flex-1 sm:flex-none border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950 font-semibold h-10"
-                        >
-                          <XCircle className="h-4 w-4 mr-2" />
-                          {selectedItemsForAction.size > 0 ? "Reject Selection" : "Reject All"}
-                        </Button>
-                        <Button
-                          onClick={() => setShowSignPendingApproveConfirm(true)}
-                          disabled={isLoading}
-                          className={cn(
-                            "flex-1 sm:flex-none text-white font-semibold h-10 px-6 shadow-md hover:shadow-lg transition-all",
-                            signPendingItems.length > 0 ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"
-                          )}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          {selectedItemsForAction.size > 0 ? "Accept Selection" : "Accept All"}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Display all items - Conditional Layout */}
                   {allRequests && allRequests.length > 0 ? (
@@ -1236,21 +1213,7 @@ export function RequestDetailsDialog({
                         <Table>
                           <TableHeader>
                             <TableRow className="bg-muted/50 hover:bg-muted/50">
-                              <TableHead className="w-[40px] text-center p-2">
-                                {isManager && (pendingItems.length > 0 || signPendingItems.length > 0) && (
-                                  <Checkbox
-                                    checked={(selectedItemsForAction.size === (pendingItems.length + signPendingItems.length)) && (pendingItems.length + signPendingItems.length) > 0}
-                                    onCheckedChange={(checked) => {
-                                      if (checked) {
-                                        selectAllPending();
-                                      } else {
-                                        deselectAll();
-                                      }
-                                    }}
-                                    className="translate-y-[2px]"
-                                  />
-                                )}
-                              </TableHead>
+                              <TableHead className="w-[40px] text-center p-2"></TableHead>
                               <TableHead className="w-[50px] text-center p-2">#</TableHead>
                               <TableHead className="min-w-[300px]">Item Details</TableHead>
                               <TableHead>Quantity</TableHead>
@@ -1280,26 +1243,13 @@ export function RequestDetailsDialog({
                                     <TableRow
                                       className={cn(
                                         "cursor-pointer transition-colors",
-                                        isSelected && "bg-muted/50",
                                         item.status === "approved" && "bg-green-50/50 hover:bg-green-50 dark:bg-green-950/10 dark:hover:bg-green-950/20",
                                         item.status === "rejected" && "bg-red-50/50 hover:bg-red-50 dark:bg-red-950/10 dark:hover:bg-red-950/20",
                                         item.status === "direct_po" && "bg-orange-50/50 hover:bg-orange-50 dark:bg-orange-950/10 dark:hover:bg-orange-950/20"
                                       )}
-                                      onClick={(e) => {
-                                        if (isPending && isManager && (e.target as HTMLElement).tagName !== 'BUTTON' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
-                                          toggleItemSelection(item._id);
-                                        }
-                                      }}
+                                      onClick={(e) => e.stopPropagation()}
                                     >
-                                      <TableCell className="p-2 text-center">
-                                        {(isPending || item.status === "sign_pending") && isManager && (
-                                          <Checkbox
-                                            checked={isSelected}
-                                            onCheckedChange={() => toggleItemSelection(item._id)}
-                                            onClick={(e) => e.stopPropagation()}
-                                          />
-                                        )}
-                                      </TableCell>
+                                      <TableCell className="p-2 text-center"></TableCell>
                                       <TableCell className="p-2 text-center">
                                         <Badge variant="outline" className="text-xs min-w-[20px] h-5 flex items-center justify-center p-0">
                                           {displayNumber}
@@ -1357,7 +1307,7 @@ export function RequestDetailsDialog({
                                           {getStatusBadge(item.status)}
                                         </div>
                                       </TableCell>
-                                      {isManager && (isPending || item.status === "sign_pending" || item.status === "sign_rejected") ? (
+                                      {isManager && (isPending || item.status === "sign_pending" || item.status === "cc_pending") ? (
                                         <TableCell className="text-right p-2">
                                           <div className="flex items-center justify-end gap-2">
                                             {item.status === "sign_pending" || item.status === "sign_rejected" ? (
@@ -1367,7 +1317,10 @@ export function RequestDetailsDialog({
                                                   size="sm"
                                                   className="h-8 border-emerald-200 text-emerald-700 hover:bg-emerald-600 hover:text-white"
                                                   title="Accept"
-                                                  onClick={(e) => { e.stopPropagation(); handleSingleApproveDirectPO(item._id); }}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowSignPendingApproveConfirm(item._id);
+                                                  }}
                                                   disabled={isLoading}
                                                 >
                                                   <CheckCircle className="h-4 w-4 mr-1.5" />
@@ -1387,6 +1340,19 @@ export function RequestDetailsDialog({
                                                   </Button>
                                                 )}
                                               </>
+                                            ) : item.status === "cc_pending" ? (
+                                              onOpenCC ? (
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  className="h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
+                                                  title="View CC"
+                                                  onClick={(e) => { e.stopPropagation(); onOpenCC(item._id); }}
+                                                >
+                                                  <FileText className="h-4 w-4 mr-1.5" />
+                                                  View CC
+                                                </Button>
+                                              ) : null
                                             ) : (
                                               <>
                                                 {(() => {
@@ -1469,45 +1435,47 @@ export function RequestDetailsDialog({
                                         <TableCell className="hidden"></TableCell>
                                       )}
                                     </TableRow>
-                                    {showItemRejectionInput === item._id && (
-                                      <TableRow className="bg-muted/10 hover:bg-muted/10">
-                                        <TableCell colSpan={6} className="p-3">
-                                          <div className="flex flex-col gap-2 max-w-md ml-auto bg-card border rounded-md p-3 shadow-sm" onClick={(e) => e.stopPropagation()}>
-                                            <Label className="text-xs font-semibold">Rejection Reason</Label>
-                                            <Textarea
-                                              value={itemRejectionReasons[item._id] || ""}
-                                              onChange={(e) =>
-                                                setItemRejectionReasons((prev) => ({
-                                                  ...prev,
-                                                  [item._id]: e.target.value,
-                                                }))
-                                              }
-                                              placeholder="Enter rejection reason..."
-                                              className="text-xs min-h-[60px]"
-                                            />
-                                            <div className="flex justify-end gap-2">
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => setShowItemRejectionInput(null)}
-                                                className="h-7 text-xs"
-                                              >
-                                                Cancel
-                                              </Button>
-                                              <Button
-                                                variant="destructive"
-                                                size="sm"
-                                                onClick={() => handleItemReject(item._id)}
-                                                disabled={isLoading || !itemRejectionReasons[item._id]?.trim()}
-                                                className="h-7 text-xs"
-                                              >
-                                                Confirm Reject
-                                              </Button>
+                                    {
+                                      showItemRejectionInput === item._id && (
+                                        <TableRow className="bg-muted/10 hover:bg-muted/10">
+                                          <TableCell colSpan={6} className="p-3">
+                                            <div className="flex flex-col gap-2 max-w-md ml-auto bg-card border rounded-md p-3 shadow-sm" onClick={(e) => e.stopPropagation()}>
+                                              <Label className="text-xs font-semibold">Rejection Reason</Label>
+                                              <Textarea
+                                                value={itemRejectionReasons[item._id] || ""}
+                                                onChange={(e) =>
+                                                  setItemRejectionReasons((prev) => ({
+                                                    ...prev,
+                                                    [item._id]: e.target.value,
+                                                  }))
+                                                }
+                                                placeholder="Enter rejection reason..."
+                                                className="text-xs min-h-[60px]"
+                                              />
+                                              <div className="flex justify-end gap-2">
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => setShowItemRejectionInput(null)}
+                                                  className="h-7 text-xs"
+                                                >
+                                                  Cancel
+                                                </Button>
+                                                <Button
+                                                  variant="destructive"
+                                                  size="sm"
+                                                  onClick={() => handleItemReject(item._id)}
+                                                  disabled={isLoading || !itemRejectionReasons[item._id]?.trim()}
+                                                  className="h-7 text-xs"
+                                                >
+                                                  Confirm Reject
+                                                </Button>
+                                              </div>
                                             </div>
-                                          </div>
-                                        </TableCell>
-                                      </TableRow>
-                                    )}
+                                          </TableCell>
+                                        </TableRow>
+                                      )
+                                    }
                                   </Fragment>
                                 );
                               })}
@@ -1619,7 +1587,7 @@ export function RequestDetailsDialog({
                                   </div>
 
                                   {/* Actions in Grid View */}
-                                  {isManager && (isPending || item.status === "sign_pending") && (
+                                  {isManager && (isPending || item.status === "sign_pending" || item.status === "cc_pending") && (
                                     <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t">
                                       {item.status === "sign_pending" ? (
                                         <>
@@ -1627,11 +1595,27 @@ export function RequestDetailsDialog({
                                             <XCircle className="h-4 w-4 mr-1.5" />
                                             Reject
                                           </Button>
-                                          <Button variant="default" size="sm" onClick={() => handleSingleApproveDirectPO(item._id)} className="h-9 w-full bg-emerald-600 hover:bg-emerald-700" title="Approve PO">
+                                          <Button variant="default" size="sm" onClick={() => setShowSignPendingApproveConfirm(item._id)} className="h-9 w-full bg-emerald-600 hover:bg-emerald-700" title="Approve PO">
                                             <CheckCircle className="h-4 w-4 mr-1.5" />
                                             Approve PO
                                           </Button>
                                         </>
+                                      ) : item.status === "cc_pending" ? (
+                                        onOpenCC ? (
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onOpenCC(item._id);
+                                            }}
+                                            className="h-9 w-full border-blue-200 text-blue-700 hover:bg-blue-50"
+                                            title="View CC"
+                                          >
+                                            <FileText className="h-4 w-4 mr-1.5" />
+                                            View CC
+                                          </Button>
+                                        ) : null
                                       ) : (
                                         <>
                                           {(() => {
@@ -1676,7 +1660,8 @@ export function RequestDetailsDialog({
                                         </>
                                       )}
                                     </div>
-                                  )}
+                                  )
+                                  }
 
                                   {/* Rejection Input for Card */}
                                   {showItemRejectionInput === item._id && (
@@ -2383,47 +2368,6 @@ export function RequestDetailsDialog({
                         </div>
                       )}
 
-                      {/* Bulk Sign Pending Approval Confirmation */}
-                      {showSignPendingApproveConfirm && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                          <div className="w-full max-w-sm mx-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6 transform transition-all scale-100">
-                            <div className="flex flex-col items-center text-center gap-4 mb-6">
-                              <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center ring-8 ring-green-50 dark:ring-green-900/10">
-                                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
-                              </div>
-                              <div className="space-y-2">
-                                <h3 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
-                                  Confirm Bulk Approval
-                                </h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[260px] mx-auto leading-relaxed">
-                                  Are you sure you want to approve {selectedItemsForAction.size > 0 ? selectedItemsForAction.size : signPendingItems.length} Direct PO(s)?
-                                </p>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <Button
-                                variant="outline"
-                                onClick={() => setShowSignPendingApproveConfirm(false)}
-                                className="w-full h-11 font-medium border-gray-200 hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:hover:bg-gray-800 dark:hover:text-white transition-colors"
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                onClick={() => {
-                                  setShowSignPendingApproveConfirm(false);
-                                  handleApproveAll();
-                                }}
-                                className={cn(
-                                  "w-full h-11 font-medium text-white shadow-lg transition-all hover:scale-[1.02]",
-                                  signPendingItems.length > 0 ? "bg-amber-600 hover:bg-amber-700 shadow-amber-500/20" : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20"
-                                )}
-                              >
-                                Confirm All
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
 
                       {/* Rejection Reason Input */}
                       {showRejectionInput && (
@@ -2440,7 +2384,7 @@ export function RequestDetailsDialog({
                                 <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[260px] mx-auto leading-relaxed">
                                   Reject {selectedItemsForAction.size > 0
                                     ? `${selectedItemsForAction.size} item(s)`
-                                    : (signPendingItems.length > 0 ? `all ${signPendingItems.length} sign off item(s)` : `all ${pendingItems.length} pending item(s)`)}?
+                                    : `all ${signPendingItems.length + pendingItems.length} item(s)`}?
                                 </p>
                               </div>
                             </div>
@@ -2486,7 +2430,7 @@ export function RequestDetailsDialog({
                                   // 2. Bulk Rejection
                                   const itemsToProcess = selectedItemsForAction.size > 0
                                     ? Array.from(selectedItemsForAction)
-                                    : (signPendingItems.length > 0 ? signPendingItems.map(item => item._id) : pendingItems.map(item => item._id));
+                                    : [...signPendingItems.map(item => item._id), ...pendingItems.map(item => item._id)];
 
                                   setShowRejectionInput(false);
 
@@ -2581,7 +2525,7 @@ export function RequestDetailsDialog({
         />
 
         {/* Site Info Dialog */}
-        <LocationInfoDialog
+        < LocationInfoDialog
           open={!!selectedSiteId}
           onOpenChange={(open) => {
             if (!open) setSelectedSiteId(null);
@@ -2599,7 +2543,98 @@ export function RequestDetailsDialog({
             />
           )
         }
-      </Dialog>
-    </div>
+
+
+      </Dialog >
+
+      {/* Sign Pending Approval Confirmation (Single & Bulk) - Rendered in Portal at body level */}
+      {showSignPendingApproveConfirm && typeof window !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          style={{ pointerEvents: 'auto' }}
+          onMouseDown={(e) => {
+            // Close when clicking backdrop only
+            if (e.target === e.currentTarget) {
+              e.stopPropagation();
+              setShowSignPendingApproveConfirm(null);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-sm mx-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl p-6"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <div className="flex flex-col items-center text-center gap-4 mb-6">
+              <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center ring-8 ring-green-50 dark:ring-green-900/10">
+                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+                  {typeof showSignPendingApproveConfirm === 'string' ? 'Approve Direct PO' : 'Batch Approval'}
+                </h3>
+                <p className="text-base text-gray-500 dark:text-gray-400 max-w-[280px] mx-auto leading-relaxed">
+                  {typeof showSignPendingApproveConfirm === 'string'
+                    ? "Are you sure you want to approve this Direct PO?"
+                    : <>You are about to <span className="font-bold text-emerald-600 dark:text-emerald-400">approve</span> {selectedItemsForAction.size > 0 ? selectedItemsForAction.size : (signPendingItems.length + pendingItems.length)} item(s).</>
+                  }
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setShowSignPendingApproveConfirm(null);
+                }}
+                className="w-full h-12 font-bold border-gray-200 hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:hover:bg-gray-800 dark:hover:text-white transition-all shadow-sm"
+                style={{ pointerEvents: 'auto' }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  if (typeof showSignPendingApproveConfirm === 'string') {
+                    handleSingleApproveDirectPO(showSignPendingApproveConfirm);
+                  } else {
+                    handleApproveAll();
+                  }
+                }}
+                disabled={isLoading}
+                className={cn(
+                  "w-full h-12 font-bold text-white shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]",
+                  signPendingItems.length > 0
+                    ? "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-orange-500/20"
+                    : "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-emerald-500/20"
+                )}
+                style={{ pointerEvents: 'auto' }}
+              >
+                {isLoading ? "Processing..." : (typeof showSignPendingApproveConfirm === 'string' ? "Confirm Approve" : "Approve All")}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+
+      {/* Edit PO Quantity Dialog */}
+      <EditPOQuantityDialog
+        open={!!editQuantityItem}
+        onOpenChange={(open) => !open && setEditQuantityItem(null)}
+        requestId={editQuantityItem?.id || null}
+        currentQuantity={editQuantityItem?.quantity || 0}
+        itemName={editQuantityItem?.name || ""}
+        unit={editQuantityItem?.unit || ""}
+        onSuccess={() => {
+          setEditQuantityItem(null);
+          // Data will refresh automatically via Convex reactivity
+        }}
+      />
+
+    </div >
   );
 }

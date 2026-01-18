@@ -73,9 +73,11 @@ import {
     Check,
     X,
     Filter,
+    RotateCw,
 } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { DirectPODialog, DirectPOInitialData } from "./direct-po-dialog";
 
 // Status configuration
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any; className?: string }> = {
@@ -133,6 +135,8 @@ export function DirectPOManagement() {
     const [showCancelDialog, setShowCancelDialog] = useState(false);
     const [showRejectDialog, setShowRejectDialog] = useState(false);
     const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+    const [showCreateDialog, setShowCreateDialog] = useState(false);
+    const [createDialogInitialData, setCreateDialogInitialData] = useState<DirectPOInitialData | null>(null);
     const [rejectReason, setRejectReason] = useState("");
     const [isLoading, setIsLoading] = useState(false);
 
@@ -245,6 +249,47 @@ export function DirectPOManagement() {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleResubmit = (po: any) => {
+        // Construct initial data from the rejected PO
+        // Handle both legacy flat structure and new items array structure if applicable
+        const items = po.items && po.items.length > 0 ? po.items.map((item: any) => ({
+            itemDescription: item.itemDescription || item.itemName || "", // Handle various naming conventions
+            description: item.description,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitRate || item.unitPrice,
+            hsnCode: item.hsnSacCode || item.hsnCode
+        })) : [{
+            itemDescription: po.itemDescription,
+            quantity: po.quantity,
+            unit: po.unit,
+            unitPrice: po.unitRate,
+            hsnCode: po.hsnSacCode
+        }];
+
+        const initialData: DirectPOInitialData = {
+            requestNumber: undefined, // Don't link to old PO number, generic resubmit
+            vendorId: po.vendor?._id,
+            deliverySiteId: po.site?._id,
+            deliverySiteName: po.site?.name,
+            items: items,
+            vendorDetails: po.vendor ? {
+                name: po.vendor.companyName,
+                email: po.vendor.email,
+                phone: po.vendor.phone,
+                contactName: po.vendor.contactName,
+                gstNumber: po.vendor.gstNumber,
+                address: po.vendor.address
+            } : undefined,
+            notes: po.rejectionReason ? `[Rejection Reason: ${po.rejectionReason}]\n${po.notes || ''}` : po.notes,
+            validTill: po.validTill ? new Date(po.validTill).toISOString().split('T')[0] : undefined
+        };
+
+        setCreateDialogInitialData(initialData);
+        setShowCreateDialog(true);
+        setShowDetailsDialog(false);
     };
 
     return (
@@ -788,10 +833,30 @@ export function DirectPOManagement() {
                                     </Button>
                                 </div>
                             )}
+
+                            {/* Resubmit Action for Rejected POs */}
+                            {selectedPOForDetails.status === 'rejected' && (
+                                <div className="flex gap-3 pt-4 border-t">
+                                    <Button
+                                        onClick={() => handleResubmit(selectedPOForDetails)}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                    >
+                                        <RotateCw className="h-4 w-4 mr-2" />
+                                        Resubmit PO
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* Create/Resubmit Dialog */}
+            <DirectPODialog
+                open={showCreateDialog}
+                onOpenChange={setShowCreateDialog}
+                initialData={createDialogInitialData}
+            />
         </>
     );
 }

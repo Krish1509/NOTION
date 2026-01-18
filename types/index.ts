@@ -46,7 +46,24 @@ export interface UpdateUserInput {
 // Request Types
 // ============================================================================
 
-export type RequestStatus = "pending" | "approved" | "rejected" | "delivered";
+export type RequestStatus =
+  | "draft"
+  | "pending"
+  | "sign_pending"
+  | "approved"
+  | "rejected"
+  | "sign_rejected"
+  | "recheck"
+  | "ready_for_cc"
+  | "cc_pending"
+  | "cc_approved"
+  | "cc_rejected"
+  | "ready_for_po"
+  | "pending_po"
+  | "rejected_po"
+  | "ready_for_delivery"
+  | "delivery_processing"
+  | "delivered";
 
 export interface RequestItem {
   name: string;
