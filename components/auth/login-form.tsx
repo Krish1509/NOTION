@@ -1,23 +1,12 @@
 "use client";
 
-/**
- * Login Form Component
- * 
- * Beautiful split-screen login page with gradient left panel and form on right.
- * Fully responsive for mobile and tablet devices.
- */
-
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useSignIn } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
-import { User, Lock, Eye, EyeOff } from "lucide-react";
+import { User, Lock, ArrowRight, Loader2, AlertCircle } from "lucide-react";
 
 interface LoginFormProps {
   disabled?: boolean;
@@ -28,54 +17,29 @@ export function LoginForm({ disabled = false }: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const syncUser = useMutation(api.syncUser.syncCurrentUser);
-  
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check for error/disabled params in URL and clear them after displaying
   useEffect(() => {
     const errorParam = searchParams?.get("error");
     const disabledParam = searchParams?.get("disabled");
-    
-    if (errorParam === "not_found") {
-      setError("Your account is not registered in the system. Please contact your administrator to create your account.");
-      // Clear error parameter from URL after displaying to prevent it from showing on refresh
-      setTimeout(() => {
-        router.replace("/login", { scroll: false });
-      }, 100);
-    } else if (errorParam === "auth_error") {
-      setError("Authentication error. Please try logging in again.");
-      setTimeout(() => {
-        router.replace("/login", { scroll: false });
-      }, 100);
-    } else if (errorParam === "no_role") {
-      setError("Your account exists but has no assigned role. Please contact your administrator.");
-      setTimeout(() => {
-        router.replace("/login", { scroll: false });
-      }, 100);
-    } else if (errorParam === "not_authenticated") {
-      setError("You must be logged in to access this page.");
-      setTimeout(() => {
-        router.replace("/login", { scroll: false });
-      }, 100);
-    } else if (disabledParam === "true") {
-      setError("Your account has been disabled. Please contact your administrator for assistance.");
-      setTimeout(() => {
-        router.replace("/login", { scroll: false });
-      }, 100);
+
+    if (errorParam || disabledParam) {
+      let msg = "An error occurred.";
+      if (errorParam === "not_found") msg = "Account not found.";
+      if (errorParam === "auth_error") msg = "Authentication failed.";
+      if (disabledParam === "true") msg = "Account disabled.";
+      setError(msg);
+      setTimeout(() => router.replace("/login", { scroll: false }), 2000);
     }
   }, [searchParams, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!isLoaded) {
-      return;
-    }
-
+    if (!isLoaded) return;
     setError("");
     setIsLoading(true);
 
@@ -87,221 +51,193 @@ export function LoginForm({ disabled = false }: LoginFormProps) {
       });
 
       if (result.status === "complete") {
-        // Ensure session is properly activated
         await setActive({ session: result.createdSessionId });
-
-        // Check if user exists in Convex before redirecting
         try {
           const userExists = await syncUser();
           if (!userExists) {
-            setError("Your account is not registered in the system. Please contact your administrator to create your account.");
+            setError("Account not found.");
             return;
           }
-
-          // Small delay to ensure session is fully active
-          // Clear any error parameters from URL by redirecting to clean dashboard URL
-          setTimeout(() => {
-            router.replace("/dashboard"); // Use replace instead of push to avoid back button issues
-            router.refresh(); // Force a refresh to ensure proper state
-          }, 100);
-        } catch (syncError) {
-          console.error("User sync error:", syncError);
-          setError("Login successful but account verification failed. Please try again.");
-        }
-      } else {
-        setError("Login failed. Please try again.");
-      }
-    } catch (err) {
-      let errorMessage = "Invalid username or password";
-      
-      if (err && typeof err === 'object') {
-        if ('errors' in err && Array.isArray(err.errors) && err.errors.length > 0) {
-          errorMessage = err.errors[0].message || errorMessage;
-        } else if ('message' in err) {
-          errorMessage = err.message as string;
+          router.replace("/dashboard");
+          router.refresh();
+        } catch {
+          setError("Verification failed.");
         }
       }
-      
-      if (errorMessage.toLowerCase().includes("couldn't find")) {
-        errorMessage = "Account not found. Please verify your username or contact your administrator.";
-      } else if (errorMessage.toLowerCase().includes("password")) {
-        errorMessage = "Invalid password. Please try again.";
-      }
-      
-      setError(errorMessage);
+    } catch (err: any) {
+      let msg = "Invalid credentials";
+      if (err?.errors?.[0]?.message) msg = err.errors[0].message;
+      if (msg.toLowerCase().includes("find")) msg = "Account not found";
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex-1 flex min-h-screen">
-      {/* Left Panel - 60% with Full Logo (Desktop only) */}
-      <div className="hidden lg:flex lg:w-3/5 relative overflow-hidden bg-gradient-to-br from-primary via-primary/95 to-primary/90 dark:from-primary/90 dark:via-primary/85 dark:to-primary/80">
-        {/* Subtle Decorative Elements */}
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-10 right-10 w-96 h-96 bg-white rounded-full blur-3xl" />
-          <div className="absolute bottom-10 left-10 w-80 h-80 bg-accent rounded-full blur-3xl" />
-        </div>
+    <div className="flex flex-col lg:flex-row h-screen w-full overflow-hidden bg-background">
 
-        {/* Content - Centered */}
-        <div className="relative z-10 flex flex-col justify-center items-center w-full px-8 py-16">
-          {/* Full Logo - Larger and More Visible */}
-          <div className="w-full max-w-3xl">
-            <div className="relative w-full">
-              <Image
-                src="/images/logos/fulllogo.png"
-                alt="Notion"
-                width={1000}
-                height={250}
-                className="object-contain w-full h-auto drop-shadow-2xl"
-                priority
-                quality={100}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* LEFT PANEL - Brand (Theme-Aware) */}
+      <div className="lg:w-1/2 w-full bg-primary relative flex flex-col justify-center items-center text-primary-foreground p-8 lg:p-16 min-h-[250px] lg:h-full overflow-hidden">
 
-      {/* Right Panel - 40% Login Form */}
-      <div className="flex-1 lg:w-2/5 flex items-center justify-center p-4 sm:p-6 lg:p-8 xl:p-12 bg-background">
-        <div className="w-full max-w-md mx-auto">
-          {/* Mobile Logo (only on mobile/tablet) */}
-          <div className="lg:hidden mb-8 text-center">
-            <div className="h-24 relative mx-auto mb-6">
-              <Image
-                src="/images/logos/fulllogo.png"
-                alt="Notion"
-                width={400}
-                height={100}
-                className="object-contain h-full mx-auto drop-shadow-lg"
-                priority
-                quality={100}
-              />
-            </div>
+        <div className="relative z-10 flex flex-col items-center lg:items-start max-w-xl w-full space-y-8">
+
+          {/* Logo */}
+          <div className="transition-transform hover:scale-105 duration-300">
+            <Image
+              src="/images/logos/fulllogo.png"
+              alt="Notion CRM"
+              width={800}
+              height={200}
+              className="w-56 lg:w-72 h-auto brightness-0 invert drop-shadow-2xl"
+              priority
+              quality={100}
+            />
           </div>
 
-          {/* Login Card */}
-          <Card className="border-2 border-border shadow-xl">
-            <CardContent className="p-6 sm:p-8">
-              {/* Header - Centered */}
-              <div className="mb-8 text-center">
-                <h2 className="text-3xl font-bold mb-3 text-foreground">Sign In</h2>
-                <p className="text-base text-muted-foreground">
-                  Enter your credentials to access your account
-                </p>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-5">
-                {/* Username Field */}
-                <div className="space-y-2">
-                  <Label htmlFor="username" className="text-sm font-semibold text-foreground">
-                    Username
-                  </Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-primary" />
-                    <Input
-                      id="username"
-                      type="text"
-                      placeholder="Enter your username"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      required
-                      autoComplete="username"
-                      autoFocus
-                      disabled={isLoading}
-                      className="pl-10 h-11 text-foreground bg-background border-2"
-                    />
-                  </div>
-                </div>
-
-                {/* Password Field */}
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm font-semibold text-foreground">
-                    Password
-                  </Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-primary z-10" />
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      autoComplete="current-password"
-                      disabled={isLoading}
-                      className="pl-10 pr-10 h-11 text-foreground bg-background border-2"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
-                      tabIndex={-1}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-5 w-5" />
-                      ) : (
-                        <Eye className="h-5 w-5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Disabled User Message */}
-                {disabled && (
-                  <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-start gap-2">
-                    <span className="text-destructive">⚠</span>
-                    <span>Your account has been disabled. Please contact your administrator for assistance.</span>
-                  </div>
-                )}
-
-                {/* Error Message */}
-                {error && (
-                  <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-start gap-2">
-                    <span className="text-destructive">⚠</span>
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                {/* Submit Button */}
-                <div className="mt-6">
-                  <Button
-                    type="submit"
-                    className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all"
-                    size="lg"
-                    disabled={isLoading || !username || !password}
-                  >
-                    {isLoading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Signing in...
-                      </span>
-                    ) : (
-                      "Sign In"
-                    )}
-                  </Button>
-                </div>
-              </form>
-
-              {/* Footer Text - Centered */}
-              <div className="mt-6 pt-6 border-t text-center">
-                <p className="text-sm font-medium text-muted-foreground">
-                  Contact your administrator for account access
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Footer Copyright - Centered */}
-          <div className="mt-6 text-center">
-            <p className="text-sm font-medium text-muted-foreground">
-              NOTION CRM © {new Date().getFullYear()}
+          {/* Headline */}
+          <div className="space-y-4">
+            <h1 className="text-4xl lg:text-6xl font-extrabold leading-tight tracking-tight">
+              Welcome Back
+            </h1>
+            <p className="text-primary-foreground/90 text-lg lg:text-xl font-medium max-w-md">
+              Sign in to access your enterprise logistics dashboard.
             </p>
           </div>
+
+          {/* Trust Badge */}
+          <div className="hidden lg:flex items-center gap-3 opacity-90">
+            <div className="flex -space-x-2">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="w-10 h-10 rounded-full bg-primary-foreground/20 border-2 border-primary-foreground/40 backdrop-blur-sm" />
+              ))}
+            </div>
+            <span className="text-sm font-semibold text-primary-foreground/80">
+              Trusted by 500+ Companies
+            </span>
+          </div>
+        </div>
+
+        {/* Wave SVG - Desktop */}
+        <div className="hidden lg:block absolute right-[-2px] top-0 bottom-0 w-[140px] overflow-hidden pointer-events-none z-20">
+          <svg viewBox="0 0 100 800" preserveAspectRatio="none" className="h-full w-full fill-background" style={{ filter: 'drop-shadow(-6px 0 10px rgba(0,0,0,0.08))' }}>
+            <path d="M100,0 L100,800 L35,800 C35,800 70,700 35,600 C0,500 70,400 30,300 C-5,220 65,100 35,0 Z" />
+          </svg>
+        </div>
+
+        {/* Wave SVG - Mobile */}
+        <div className="lg:hidden absolute bottom-[-2px] left-0 right-0 h-[60px] overflow-hidden pointer-events-none z-20">
+          <svg viewBox="0 0 500 100" preserveAspectRatio="none" className="w-full h-full fill-background" style={{ filter: 'drop-shadow(0 -4px 8px rgba(0,0,0,0.08))' }}>
+            <path d="M0,100 L500,100 L500,35 C450,70 350,50 250,60 C150,70 50,40 0,35 Z" />
+          </svg>
+        </div>
+
+        {/* Decorative elements */}
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5" />
+        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-primary-foreground/10 rounded-full blur-3xl" />
+        <div className="absolute -top-32 -right-32 w-96 h-96 bg-primary-foreground/5 rounded-full blur-3xl" />
+      </div>
+
+      {/* RIGHT PANEL - Form */}
+      <div className="lg:w-1/2 w-full flex items-center justify-center p-6 lg:p-12 bg-background">
+
+        <div className="w-full max-w-md space-y-8">
+
+          {/* Header */}
+          <div className="space-y-2 text-center lg:text-left">
+            <h2 className="text-3xl font-bold text-foreground tracking-tight">
+              Sign In
+            </h2>
+            <p className="text-muted-foreground">
+              Enter your credentials to continue
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-5">
+
+            {/* Username Input */}
+            <div className="space-y-2">
+              <label htmlFor="username" className="text-sm font-semibold text-foreground">
+                Username
+              </label>
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                  <User size={20} strokeWidth={2} />
+                </div>
+                <input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  placeholder="Enter your username"
+                  className="w-full pl-11 pr-4 py-3.5 bg-secondary/60 hover:bg-secondary border-2 border-transparent focus:border-primary focus:bg-background focus:ring-4 focus:ring-primary/10 rounded-2xl transition-all outline-none text-base font-medium placeholder:text-muted-foreground/60 disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+              </div>
+            </div>
+
+            {/* Password Input */}
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-semibold text-foreground">
+                Password
+              </label>
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                  <Lock size={20} strokeWidth={2} />
+                </div>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  placeholder="Enter your password"
+                  className="w-full pl-11 pr-4 py-3.5 bg-secondary/60 hover:bg-secondary border-2 border-transparent focus:border-primary focus:bg-background focus:ring-4 focus:ring-primary/10 rounded-2xl transition-all outline-none text-base font-medium placeholder:text-muted-foreground/60 disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {(error || disabled) && (
+              <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-2xl">
+                <AlertCircle className="text-destructive flex-shrink-0" size={20} />
+                <p className="text-sm font-semibold text-destructive">
+                  {disabled ? "Account disabled" : error}
+                </p>
+              </div>
+            )}
+
+            {/* Submit Button (Theme-Aware) */}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-4 px-6 bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground font-bold text-base rounded-2xl shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-lg group"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="animate-spin" size={20} />
+                  <span>Signing in...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+            </button>
+
+            {/* Footer */}
+            <div className="pt-4 text-center">
+              <p className="text-xs text-muted-foreground">
+                &copy; {new Date().getFullYear()} Notion CRM - Enterprise Logistics Platform
+              </p>
+            </div>
+          </form>
         </div>
       </div>
     </div>
   );
 }
-
